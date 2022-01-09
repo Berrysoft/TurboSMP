@@ -1,0 +1,17 @@
+cmake_minimum_required(VERSION 3.14)
+project(TurboSMP LANGUAGES CXX CUDA)
+set(CMAKE_VISIBILITY_INLINES_HIDDEN ON)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_CXX_VISIBILITY_PRESET hidden)
+set(CMAKE_CUDA_STANDARD 17)
+set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+
+find_package(CUDAToolkit REQUIRED)
+
+file(GLOB SOURCE "src/*.c*")
+add_executable(tsmp ${SOURCE})
+target_include_directories(tsmp PUBLIC include)
+target_link_libraries(tsmp PUBLIC CUDA::cudart)
+# set_target_properties(cudatest PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
