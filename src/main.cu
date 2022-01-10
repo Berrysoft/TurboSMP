@@ -19,7 +19,7 @@
 using namespace std;
 
 // Thread 0 can assume the result is calculated successfully.
-__device__ void dot(const size_t n, const float* x, const float* y, float* pres)
+__device__ void dot(const size_t n, const float* __restrict__ x, const float* __restrict__ y, float* __restrict__ pres)
 {
     __shared__ float temp[1024];
     assert(n < 1024);
@@ -43,21 +43,43 @@ __device__ void dot(const size_t n, const float* x, const float* y, float* pres)
 
 __device__ void combine(
     const size_t nw,
-    const float* A,
-    const float* cx,
+    const size_t nl,
+    const float* __restrict__ A,
+    const float* __restrict__ cx,
     const float t, // 时间，属于 tlist 下标
-    float* A_vec, // nw
-    float* c_vec // nw
+    float* __restrict__ A_vec, // nw
+    float* __restrict__ c_vec // nw
 )
 {
+    float fti;
+    float frac = modf(t - 0.5, &fti);
+    size_t ti = (size_t)fti;
+
+    float alpha[2] = { 1 - frac, frac };
+
+    const uint32_t id = threadIdx.x;
+    assert(id < nw * 4);
+
+    memset(A_vec, 0, nw * sizeof(float));
+    memset(c_vec, 0, nw * sizeof(float));
+
+    if (id < nw * 4)
+    {
+        auto id_vec = id / 4;
+        auto id_dot = id % 4;
+        auto id_alpha = id_dot / 2;
+        auto id_interp = id_dot % 2;
+        atomicAdd(&A_vec[id_vec], alpha[id_alpha] * A[id_vec * nl + id_interp + ti]);
+        atomicAdd(&c_vec[id_vec], alpha[id_alpha] * cx[id_vec * nl + id_interp + ti]);
+    }
 }
 
 // TODO: t is ordered
 __device__ void real_time(
     const size_t n,
     const size_t nl,
-    float* pt, // n
-    const float* tlist // nl
+    float* __restrict__ pt, // n
+    const float* __restrict__ tlist // nl
 )
 {
     const uint32_t id = threadIdx.x;
@@ -83,14 +105,14 @@ __device__ void lc(const size_t n, float* t)
 __device__ void move1(
     const size_t nw,
     const size_t nl,
-    const float* A_vec,
-    const float* c_vec,
-    const float* z,
+    const float* __restrict__ A_vec,
+    const float* __restrict__ c_vec,
+    const float* __restrict__ z,
     const int step,
     const float mus,
     const float sig2s,
-    float* pdelta_nu, // x1
-    float* pbeta // x1
+    float* __restrict__ pdelta_nu, // x1
+    float* __restrict__ pbeta // x1
 )
 {
     const uint32_t id = threadIdx.x;
@@ -113,36 +135,65 @@ __device__ void move1(
 __device__ void move2(
     const size_t nw,
     const size_t nl,
-    const float* A_vec,
-    const float* c_vec,
+    const float* __restrict__ A_vec,
+    const float* __restrict__ c_vec,
     const int step,
     const float mus,
-    const float* A,
+    const float* __restrict__ A,
     const float beta,
-    float* delta_cx, // nw x nl
-    float* delta_z // nw
+    float* __restrict__ delta_cx, // nw x nl
+    float* __restrict__ delta_z // nw
 )
 {
+    assert(nw * nl < 1024);
+    const uint32_t id = threadIdx.x;
+    if (id < nw * nl)
+    {
+        delta_cx[id] = A[id] * c_vec[id / nl];
+    }
+    __syncthreads();
+    __shared__ float temp[1024];
+    assert(nw < 1024);
+    if (id < nl)
+    {
+        // TODO: optimize sum
+        float res = 0.0;
+        for (size_t i = 0; i < nw; i++)
+        {
+            res += delta_cx[i * nl + id];
+        }
+        temp[id] = res;
+    }
+    __syncthreads();
+    if (id < nw * nl)
+    {
+        delta_cx[id] = beta * c_vec[id / nl] * temp[id % nl];
+    }
+    if (id < nw)
+    {
+        delta_z[id] = -step * A_vec[id] * mus;
+    }
 }
 
 // return delta_nu
 __device__ void move(
     const size_t nw,
     const size_t nl,
-    const float* A_vec,
-    const float* c_vec,
-    const float* z,
+    const float* __restrict__ A_vec,
+    const float* __restrict__ c_vec,
+    const float* __restrict__ z,
     const int step,
     const float mus,
     const float sig2s,
     const float* A,
-    float* delta_nu,
-    float* delta_cx,
-    float* delta_z)
+    float* __restrict__ delta_nu,
+    float* __restrict__ delta_cx,
+    float* __restrict__ delta_z)
 {
     __shared__ float beta;
     move1(nw, nl, A_vec, c_vec, z, step, mus, sig2s, delta_nu, &beta);
-    __syncthreads();
+    // beta is used after __syncthreads()
+    // __syncthreads();
     move2(nw, nl, A_vec, c_vec, step, mus, A, beta, delta_cx, delta_z);
 }
 
@@ -151,19 +202,19 @@ static constexpr size_t TRIALS = 2000;
 __global__ void flow(
     const size_t nw,
     const size_t nl,
-    const float* cx, // nw x nl, Cov^-1 * A, 详见 FBMP
-    const float* tlist, // nl
-    const float* z, // nw, residue waveform
+    const float* __restrict__ cx, // nw x nl, Cov^-1 * A, 详见 FBMP
+    const float* __restrict__ tlist, // nl
+    const float* __restrict__ z, // nw, residue waveform
     const float mus, // spe波形的平均幅值
     const float sig2s, // spe波形幅值方差
-    const float* A, // nw x nl
-    const float* p_cha, // nl
+    const float* __restrict__ A, // nw x nl
+    const float* __restrict__ p_cha, // nl
     const float mu_t, // LucyDDM 的估算 PE 数
-    float* s0_history, // TRIALS, ||s||_0
-    float* delta_nu_history, // TRIALS, Δν
-    float* t0_history, // TRIALS, t_0
-    float* A_vec,
-    float* c_vec)
+    float* __restrict__ s0_history, // TRIALS, ||s||_0
+    float* __restrict__ delta_nu_history, // TRIALS, Δν
+    float* __restrict__ t0_history, // TRIALS, t_0
+    float* __restrict__ A_vec,
+    float* __restrict__ c_vec)
 {
     // 波形编号，一个 block 一个波形
     const uint32_t waveform_id = blockIdx.x;
