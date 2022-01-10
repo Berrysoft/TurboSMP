@@ -37,11 +37,14 @@ __device__ void dot(const std::size_t n, const float* __restrict__ x, const floa
     __shared__ float temp[1024];
     assert(n <= 1024);
     const std::uint32_t id = threadIdx.x;
-    if (id == 0) memset(temp, 0, sizeof(temp));
-    __syncthreads();
     if (id < n)
     {
-        temp[id] += x[id] * y[id];
+        temp[id] = x[id] * y[id];
+    }
+    else if (id < 1024)
+    {
+        // Set to zero because temp is reused.
+        temp[id] = 0;
     }
     __syncthreads();
     sum(1024, temp);
@@ -60,19 +63,20 @@ __device__ void combine(
 {
     float fti;
     float frac = modf(t - 0.5, &fti);
-    std::size_t ti = (std::size_t)fti;
+    std::uint32_t ti = (std::uint32_t)fti;
 
     float alpha[2] = { 1 - frac, frac };
 
     const std::uint32_t id = threadIdx.x;
     assert(id < nw * 4);
 
-    if (id == 0)
+    if (id < nw)
     {
-        memset(A_vec, 0, nw * sizeof(float));
-        memset(c_vec, 0, nw * sizeof(float));
+        A_vec[id] = 0;
+        c_vec[id] = 0;
     }
-
+    // Sync because nw < nw * 4
+    __syncthreads();
     if (id < nw * 4)
     {
         auto id_vec = id / 4;
