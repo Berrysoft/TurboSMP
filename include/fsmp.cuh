@@ -88,6 +88,24 @@ __device__ void combine(
     }
 }
 
+__device__ __host__ std::size_t bisect(const std::size_t n, const float* arr, const float x)
+{
+    if (n == 0) return 0;
+    std::size_t i = n / 2;
+    if (arr[i] == x)
+    {
+        return i;
+    }
+    else if (arr[i] < x)
+    {
+        return i + 1 + bisect(n - i - 1, &arr[i + 1], x);
+    }
+    else
+    {
+        return bisect(i, arr, x);
+    }
+}
+
 // TODO: t is ordered
 __device__ void real_time(
     const std::size_t n,
@@ -100,12 +118,7 @@ __device__ void real_time(
     if (id < n)
     {
         float t = pt[id];
-        // TODO: bisect
-        std::size_t i = 0;
-        for (; i < nl; i++)
-        {
-            if (tlist[i] >= t) break;
-        }
+        std::size_t i = bisect(nl, tlist, t);
         if (i == 0)
         {
             assert(t == tlist[0]);

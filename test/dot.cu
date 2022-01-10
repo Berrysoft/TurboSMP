@@ -10,6 +10,16 @@
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
 
+BOOST_AUTO_TEST_CASE(bisect_test)
+{
+    float arr[] = { 1, 2, 3, 4, 5, 6 };
+    BOOST_REQUIRE_EQUAL(0, bisect(6, arr, 1));
+    BOOST_REQUIRE_EQUAL(1, bisect(6, arr, 1.5));
+    BOOST_REQUIRE_EQUAL(1, bisect(6, arr, 2));
+    BOOST_REQUIRE_EQUAL(5, bisect(6, arr, 5.5));
+    BOOST_REQUIRE_EQUAL(5, bisect(6, arr, 6));
+}
+
 __global__ void dot_wrapper(const std::size_t n, const float* __restrict__ x, const float* __restrict__ y, float* __restrict__ pres)
 {
     __shared__ float res;
