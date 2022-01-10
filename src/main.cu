@@ -7,26 +7,38 @@
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
 
-#include <cuda_runtime.h>
-
 #ifdef __INTELLISENSE__
     #define CUDA_KERNEL(...)
-    #include <device_launch_parameters.h>
+    #define __CUDACC__
 #else
     #define CUDA_KERNEL(...) <<< __VA_ARGS__ >>>
 #endif
 
+#include <cuda_runtime.h>
+
 using namespace std;
 
-__device__ float dot(const size_t n, const float* x, const float* y)
+// Thread 0 can assume the result is calculated successfully.
+__device__ void dot(const size_t n, const float* x, const float* y, float* pres)
 {
+    __shared__ float temp[1024];
+    assert(n < 1024);
     const uint32_t id = threadIdx.x;
-    float result = 0.0;
     if (id < n)
     {
-        result += x[id] * y[id];
+        temp[id] += x[id] * y[id];
     }
-    return result;
+    __syncthreads();
+    // TODO: optimize sum
+    if (id == 0)
+    {
+        float res = 0.0;
+        for (size_t i = 0; i < n; i++)
+        {
+            res += temp[i];
+        }
+        *pres = res;
+    }
 }
 
 __device__ void combine(
@@ -41,8 +53,7 @@ __device__ void combine(
 }
 
 // TODO: t is ordered
-// TODO: bisect
-__device__ __host__ void real_time(
+__device__ void real_time(
     const size_t n,
     const size_t nl,
     float* pt, // n
@@ -53,6 +64,7 @@ __device__ __host__ void real_time(
     if (id < n)
     {
         float t = pt[id];
+        // TODO: bisect
         size_t i = 0;
         for (; i < nl; i++)
         {
@@ -64,7 +76,7 @@ __device__ __host__ void real_time(
     }
 }
 
-__device__ __host__ void lc(const size_t n, float* t)
+__device__ void lc(const size_t n, float* t)
 {
 }
 
@@ -77,13 +89,25 @@ __device__ void move1(
     const int step,
     const float mus,
     const float sig2s,
-    float* delta_nu, // x1
-    float* beta // x1
+    float* pdelta_nu, // x1
+    float* pbeta // x1
 )
 {
-    float fsig2s = step * sig2s;
-    float beta_under = 1 + fsig2s * dot(nw, A_vec, c_vec);
-    // TODO
+    const uint32_t id = threadIdx.x;
+    float beta_under;
+    dot(nw, A_vec, c_vec, &beta_under);
+    float temp;
+    dot(nw, z, c_vec, &temp);
+    if (id == 0)
+    {
+        float fsig2s = step * sig2s;
+        beta_under = 1 + fsig2s * beta_under;
+        float beta = fsig2s / beta_under;
+        float delta_nu = 0.5 * (beta * powf(temp + mus / sig2s, 2.0f) - powf(mus, 2.0f) / sig2s);
+        delta_nu -= 0.5 * logf(beta_under);
+        *pdelta_nu = delta_nu;
+        *pbeta = beta;
+    }
 }
 
 __device__ void move2(
@@ -102,7 +126,7 @@ __device__ void move2(
 }
 
 // return delta_nu
-__device__ float move(
+__device__ void move(
     const size_t nw,
     const size_t nl,
     const float* A_vec,
@@ -112,13 +136,14 @@ __device__ float move(
     const float mus,
     const float sig2s,
     const float* A,
+    float* delta_nu,
     float* delta_cx,
     float* delta_z)
 {
-    float delta_nu, beta;
-    move1(nw, nl, A_vec, c_vec, z, step, mus, sig2s, &delta_nu, &beta);
+    __shared__ float beta;
+    move1(nw, nl, A_vec, c_vec, z, step, mus, sig2s, delta_nu, &beta);
+    __syncthreads();
     move2(nw, nl, A_vec, c_vec, step, mus, A, beta, delta_cx, delta_z);
-    return delta_nu;
 }
 
 static constexpr size_t TRIALS = 2000;
