@@ -11,27 +11,41 @@
 #include <cstdint>
 #include <cuda_runtime.h>
 
+__device__ void sum(const std::size_t n, float* x)
+{
+    assert(n % 2 == 0);
+    const std::uint32_t id = threadIdx.x;
+    std::size_t num = n / 2;
+    while (num)
+    {
+        if (id < num)
+        {
+            x[id] += x[id + num];
+        }
+        else
+        {
+            break;
+        }
+        __syncthreads();
+        num /= 2;
+    }
+}
+
 // Thread 0 can assume the result is calculated successfully.
 __device__ void dot(const std::size_t n, const float* __restrict__ x, const float* __restrict__ y, float* __restrict__ pres)
 {
     __shared__ float temp[1024];
     assert(n <= 1024);
     const std::uint32_t id = threadIdx.x;
+    if (id == 0) memset(temp, 0, sizeof(temp));
+    __syncthreads();
     if (id < n)
     {
         temp[id] += x[id] * y[id];
     }
     __syncthreads();
-    // TODO: optimize sum
-    if (id == 0)
-    {
-        float res = 0.0;
-        for (std::size_t i = 0; i < n; i++)
-        {
-            res += temp[i];
-        }
-        *pres = res;
-    }
+    sum(1024, temp);
+    if (id == 0) *pres = temp[0];
 }
 
 __device__ void combine(
@@ -53,8 +67,11 @@ __device__ void combine(
     const std::uint32_t id = threadIdx.x;
     assert(id < nw * 4);
 
-    memset(A_vec, 0, nw * sizeof(float));
-    memset(c_vec, 0, nw * sizeof(float));
+    if (id == 0)
+    {
+        memset(A_vec, 0, nw * sizeof(float));
+        memset(c_vec, 0, nw * sizeof(float));
+    }
 
     if (id < nw * 4)
     {
@@ -83,11 +100,18 @@ __device__ void real_time(
         std::size_t i = 0;
         for (; i < nl; i++)
         {
-            if (tlist[i] > t) break;
+            if (tlist[i] >= t) break;
         }
-        assert(i > 0);
-        assert(i < nl);
-        pt[id] = i - 1 + (t - tlist[i - 1]) / (tlist[i] - tlist[i - 1]);
+        if (i == 0)
+        {
+            assert(t == tlist[0]);
+            pt[id] = 0;
+        }
+        else
+        {
+            assert(i < nl);
+            pt[id] = i - 1 + (t - tlist[i - 1]) / (tlist[i] - tlist[i - 1]);
+        }
     }
 }
 
