@@ -3,6 +3,7 @@
 
 #include <fsmp.cuh>
 
+#include <algorithm>
 #include <random>
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
@@ -48,4 +49,38 @@ __global__ void real_time_wrapper(const std::size_t n, const std::size_t nl, flo
 
 BOOST_AUTO_TEST_CASE(real_time_test)
 {
+    constexpr size_t NT = 100;
+    constexpr size_t NTLIST = 10;
+    thrust::host_vector<float> hts(NT, 0.0);
+    thrust::host_vector<float> htlist(NTLIST, 0.0);
+    std::uniform_real_distribution<float> rnd{ 100, 200 };
+    for (size_t i = 0; i < NT; i++)
+    {
+        hts[i] = rnd(rnd_engine);
+    }
+    for (size_t i = 1; i < NTLIST - 1; i++)
+    {
+        htlist[i] = rnd(rnd_engine);
+    }
+    htlist[0] = 100;
+    htlist[NTLIST - 1] = 200;
+    std::sort(hts.begin(), hts.end());
+    std::sort(htlist.begin(), htlist.end());
+
+    thrust::device_vector<float> dts = hts;
+    thrust::device_vector<float> dtlist = htlist;
+    real_time_wrapper CUDA_KERNEL(1, 1024)(NT, NTLIST, dts.data().get(), dtlist.data().get());
+
+    for (size_t i = 0; i < NT; i++)
+    {
+        float t = hts[i];
+        size_t j = 0;
+        for (; j < NTLIST; j++)
+        {
+            if (htlist[j] > t) break;
+        }
+        hts[i] = j - 1 + (t - htlist[j - 1]) / (htlist[j] - htlist[j - 1]);
+    }
+
+    BOOST_REQUIRE_EQUAL_COLLECTIONS(hts.begin(), hts.end(), dts.begin(), dts.end());
 }
