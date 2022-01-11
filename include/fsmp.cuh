@@ -15,19 +15,63 @@ __device__ void sum(const std::size_t n, float* x)
 {
     assert(n % 2 == 0);
     const std::uint32_t id = threadIdx.x;
-    std::size_t num = n / 2;
-    while (num)
+    std::size_t num = n;
+    while (num /= 2)
     {
         if (id < num)
         {
             x[id] += x[id + num];
+            if (id == 0 && num % 2 == 1)
+            {
+                x[num] = 0;
+            }
         }
         else
         {
             break;
         }
         __syncthreads();
-        num /= 2;
+        if (num == 1)
+        {
+            break;
+        }
+        else if (num % 2 == 1)
+        {
+            num++;
+        }
+    }
+}
+
+__device__ void sum2x(const std::size_t nx, const std::size_t ny, float* x)
+{
+    assert(nx % 2 == 0);
+    const std::uint32_t id = threadIdx.x;
+    const std::uint32_t ix = id / ny;
+    const std::uint32_t iy = id % ny;
+    std::size_t num = nx;
+    while (num /= 2)
+    {
+        if (ix < num)
+        {
+            x[ix * ny + iy] += x[(ix + num) * ny + iy];
+            if (ix == 0 && num % 2 == 1)
+            {
+                x[num * ny + iy] = 0;
+            }
+        }
+        else
+        {
+            break;
+        }
+        __syncthreads();
+        if (num == 1)
+        {
+            break;
+        }
+        else if (num % 2 == 1)
+        {
+            num++;
+        }
     }
 }
 
@@ -37,11 +81,12 @@ __device__ void dot(const std::size_t n, const float* __restrict__ x, const floa
     __shared__ float temp[1024];
     assert(n <= 1024);
     const std::uint32_t id = threadIdx.x;
+    assert(id < 1024);
     if (id < n)
     {
         temp[id] = x[id] * y[id];
     }
-    else if (id < 1024)
+    else
     {
         // Set to zero because temp is reused.
         temp[id] = 0;
@@ -152,6 +197,8 @@ __device__ void move1(
     const std::uint32_t id = threadIdx.x;
     float beta_under;
     dot(nw, A_vec, c_vec, &beta_under);
+    // Sync because the shared memory may be overwritten
+    __syncthreads();
     float temp;
     dot(nw, z, c_vec, &temp);
     if (id == 0)
@@ -186,17 +233,12 @@ __device__ void move2(
         delta_cx[id] = A[id] * c_vec[id / nl];
     }
     __syncthreads();
+    sum2x(nw, nl, delta_cx);
     __shared__ float temp[1024];
-    assert(nw < 1024);
+    assert(nl < 1024);
     if (id < nl)
     {
-        // TODO: optimize sum
-        float res = 0.0;
-        for (std::size_t i = 0; i < nw; i++)
-        {
-            res += delta_cx[i * nl + id];
-        }
-        temp[id] = res;
+        temp[id] = delta_cx[id];
     }
     __syncthreads();
     if (id < nw * nl)

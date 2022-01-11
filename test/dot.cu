@@ -10,6 +10,9 @@
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
 
+std::random_device rnd_device{};
+std::default_random_engine rnd_engine{ rnd_device() };
+
 BOOST_AUTO_TEST_CASE(bisect_test)
 {
     float arr[] = { 1, 2, 3, 4, 5, 6 };
@@ -18,6 +21,66 @@ BOOST_AUTO_TEST_CASE(bisect_test)
     BOOST_REQUIRE_EQUAL(1, bisect(6, arr, 2));
     BOOST_REQUIRE_EQUAL(5, bisect(6, arr, 5.5));
     BOOST_REQUIRE_EQUAL(5, bisect(6, arr, 6));
+}
+
+__global__ void sum_wrapper(const std::size_t n, float* x)
+{
+    sum(n, x);
+}
+
+BOOST_AUTO_TEST_CASE(sum_test)
+{
+    constexpr size_t N = 100;
+    thrust::host_vector<float> hx(N, 0.0f);
+    std::uniform_real_distribution<float> rnd{};
+    for (size_t i = 0; i < N; i++)
+    {
+        hx[i] = rnd(rnd_engine);
+    }
+
+    float expect_sum = std::accumulate(hx.begin(), hx.end(), 0.0f);
+
+    thrust::device_vector<float> dx = hx;
+    sum_wrapper CUDA_KERNEL(1, 1024)(N, dx.data().get());
+
+    float rsum = dx[0];
+    BOOST_REQUIRE_CLOSE(expect_sum, rsum, 1e-3f);
+}
+
+__global__ void sum2x_wrapper(const std::size_t nx, const std::size_t ny, float* x)
+{
+    sum2x(nx, ny, x);
+}
+
+BOOST_AUTO_TEST_CASE(sum2x_test)
+{
+    constexpr size_t NX = 100;
+    constexpr size_t NY = 9;
+    thrust::host_vector<float> hx(NX * NY, 0.0f);
+    std::uniform_real_distribution<float> rnd{};
+    for (size_t i = 0; i < NX * NY; i++)
+    {
+        hx[i] = rnd(rnd_engine);
+    }
+
+    thrust::host_vector<float> expect_sum(NY, 0.0f);
+    for (size_t j = 0; j < NY; j++)
+    {
+        float sum = 0.0;
+        for (size_t i = 0; i < NX; i++)
+        {
+            sum += hx[i * NY + j];
+        }
+        expect_sum[j] = sum;
+    }
+
+    thrust::device_vector<float> dx = hx;
+    sum2x_wrapper CUDA_KERNEL(1, 1024)(NX, NY, dx.data().get());
+
+    for (size_t j = 0; j < NY; j++)
+    {
+        BOOST_REQUIRE_CLOSE(expect_sum[j], (float)dx[j], 1e-3f);
+    }
 }
 
 __global__ void dot_wrapper(const std::size_t n, const float* __restrict__ x, const float* __restrict__ y, float* __restrict__ pres)
@@ -30,9 +93,6 @@ __global__ void dot_wrapper(const std::size_t n, const float* __restrict__ x, co
         *pres = res;
     }
 }
-
-std::random_device rnd_device{};
-std::default_random_engine rnd_engine{ rnd_device() };
 
 void dot_test_length(size_t LENGTH)
 {
