@@ -199,3 +199,21 @@ BOOST_AUTO_TEST_CASE(interp_by_test)
 
     BOOST_REQUIRE_EQUAL_COLLECTIONS(expect.begin(), expect.end(), dts.begin(), dts.end());
 }
+
+__global__ void lc_wrapper(const std::size_t n, float* t)
+{
+  lc(n, t);
+}
+
+BOOST_AUTO_TEST_CASE(lc_test)
+{
+  std::vector<float> real_time{ 0, 1, 2 };
+  std::vector<float> log_lc{ -3.87754404, -3.74832397, -3.64498369 };
+  thrust::device_vector<float> drt = real_time;
+  lc_wrapper CUDA_KERNEL(1, 1024)(drt.size(), drt.data().get());
+
+  for (size_t j = 0; j < real_time.size(); j++)
+    {
+      BOOST_REQUIRE_CLOSE(log_lc[j], (float)drt[j], 1e-3f);
+    }
+}
