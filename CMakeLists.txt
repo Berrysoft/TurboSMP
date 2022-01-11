@@ -14,7 +14,7 @@ find_package(CUDAToolkit REQUIRED)
 file(GLOB SOURCE "src/*.c*")
 add_executable(tsmp ${SOURCE})
 target_include_directories(tsmp PUBLIC include)
-target_link_libraries(tsmp PUBLIC CUDA::cudart)
+target_link_libraries(tsmp PUBLIC CUDA::cudart CUDA::curand)
 # set_target_properties(cudatest PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
 
 enable_testing()

@@ -151,6 +151,46 @@ __device__ __host__ std::size_t bisect(const std::size_t n, const float* arr, co
     }
 }
 
+__device__ void interp_id(const std::size_t nx, const std::size_t nf, float* __restrict__ x, const float* __restrict__ f)
+{
+    const std::uint32_t id = threadIdx.x;
+    if (id < nx)
+    {
+        float t = x[id];
+        std::size_t i = bisect(nf, f, t);
+        if (i == 0)
+        {
+            assert(t == f[0]);
+            x[id] = 0;
+        }
+        else
+        {
+            assert(i < nf);
+            x[id] = i - 1 + (t - f[i - 1]) / (f[i] - f[i - 1]);
+        }
+    }
+}
+
+__device__ void interp_by(const std::size_t nx, const std::size_t nf, float* __restrict__ x, const float* __restrict__ by)
+{
+    const std::uint32_t id = threadIdx.x;
+    if (id < nx)
+    {
+        float t = x[id];
+        std::size_t i = (std::size_t)ceil(t);
+        if (i == 0)
+        {
+            assert(t == 0);
+            x[id] = by[0];
+        }
+        else
+        {
+            assert(i < nf);
+            x[id] = by[i - 1] + (by[i] - by[i - 1]) * (t - (i - 1));
+        }
+    }
+}
+
 // TODO: t is ordered
 __device__ void real_time(
     const std::size_t n,
@@ -159,22 +199,7 @@ __device__ void real_time(
     const float* __restrict__ tlist // nl
 )
 {
-    const std::uint32_t id = threadIdx.x;
-    if (id < n)
-    {
-        float t = pt[id];
-        std::size_t i = bisect(nl, tlist, t);
-        if (i == 0)
-        {
-            assert(t == tlist[0]);
-            pt[id] = 0;
-        }
-        else
-        {
-            assert(i < nl);
-            pt[id] = i - 1 + (t - tlist[i - 1]) / (tlist[i] - tlist[i - 1]);
-        }
-    }
+    interp_id(n, nl, pt, tlist);
 }
 
 __device__ void lc(const std::size_t n, float* t)

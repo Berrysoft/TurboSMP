@@ -181,3 +181,21 @@ BOOST_AUTO_TEST_CASE(real_time_test_random)
 
     BOOST_REQUIRE_EQUAL_COLLECTIONS(hts.begin(), hts.end(), dts.begin(), dts.end());
 }
+
+__global__ void interp_by_wrapper(const std::size_t nx, const std::size_t nf, float* __restrict__ x, const float* __restrict__ by)
+{
+    interp_by(nx, nf, x, by);
+}
+
+BOOST_AUTO_TEST_CASE(interp_by_test)
+{
+    std::vector<float> hts{ 0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4 };
+    std::vector<float> htlist{ 100, 102, 104, 106, 108 };
+    std::vector<float> expect{ 100, 101, 102, 103, 104, 105, 106, 107, 108 };
+
+    thrust::device_vector<float> dts = hts;
+    thrust::device_vector<float> dtlist = htlist;
+    interp_by_wrapper CUDA_KERNEL(1, 1024)(dts.size(), dtlist.size(), dts.data().get(), dtlist.data().get());
+
+    BOOST_REQUIRE_EQUAL_COLLECTIONS(expect.begin(), expect.end(), dts.begin(), dts.end());
+}
