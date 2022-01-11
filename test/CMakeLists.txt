@@ -1,5 +1,3 @@
-find_package(Boost COMPONENTS unit_test_framework REQUIRED)
-
 function(fsmp_add_test name)
   add_executable(${name} "${name}.cu")
   target_link_libraries(${name} PRIVATE CUDA::cudart Boost::disable_autolinking Boost::dynamic_linking Boost::unit_test_framework)

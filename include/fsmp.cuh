@@ -107,7 +107,7 @@ __device__ void combine(
 )
 {
     float fti;
-    float frac = modf(t - 0.5, &fti);
+    float frac = std::modf(t - 0.5, &fti);
     std::uint32_t ti = (std::uint32_t)fti;
 
     float alpha[2] = { 1 - frac, frac };
@@ -200,6 +200,13 @@ __device__ void real_time(
 )
 {
     interp_id(n, nl, pt, tlist);
+}
+
+// Could be called when id == 0
+__device__ float real_time(float t, const std::size_t nl, const float* tlist)
+{
+    real_time(1, nl, &t, tlist);
+    return t;
 }
 
 __device__ void lc(const std::size_t n, float* t)

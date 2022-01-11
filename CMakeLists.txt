@@ -10,12 +10,18 @@ set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_RUNTIME_LIBRARY Shared)
 
 find_package(CUDAToolkit REQUIRED)
+find_package(Boost COMPONENTS unit_test_framework program_options REQUIRED)
+find_package(HDF5 COMPONENTS CXX REQUIRED)
 
 file(GLOB SOURCE "src/*.c*")
 add_executable(tsmp ${SOURCE})
 target_include_directories(tsmp PUBLIC include)
-target_link_libraries(tsmp PUBLIC CUDA::cudart CUDA::curand)
-# set_target_properties(cudatest PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+target_link_libraries(tsmp
+	PUBLIC
+	CUDA::cudart CUDA::curand
+	Boost::disable_autolinking Boost::dynamic_linking Boost::program_options
+	${HDF5_LIBRARIES}
+)
 
 enable_testing()
 add_subdirectory(test)
