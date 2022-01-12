@@ -18,4 +18,7 @@ CTestTestfile.cmake
 CMakeSettings.json
 
 # clangd
-.clangd/
+.clangd
+.cache/
+
+build/

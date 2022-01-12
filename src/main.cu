@@ -82,6 +82,7 @@ __global__ void flow(
         s[id] = 0;
     }
     assert(NPE0 < 1024);
+    std::size_t len_s = NPE0;
     interp_by(NPE0, nl + 1, s, c_cha);
     __syncthreads();
 
@@ -148,6 +149,9 @@ __global__ void flow(
 
     __syncthreads();
 
+    __shared__ float p1[1024];
+    __shared__ float new_p1[1024];
+    __shared__ float temp_p1[1024];
     for (std::size_t i = 0; i < TRIALS; i++)
     {
         float t = istar[i];
@@ -158,7 +162,40 @@ __global__ void flow(
         float accept = accepts[i];
         float acct = accts[i];
 
-        // TODO
+        float new_t0 = t0 + wt;
+
+        if (id < len_s)
+        {
+            p1[id] = s[id];
+        }
+        real_time(len_s, nl, p1, tlist);
+        if (id < len_s)
+        {
+            new_p1[id] = p1[id] - new_t0;
+            p1[id] -= t0;
+        }
+        lc(len_s, p1);
+        lc(len_s, new_p1);
+        if (id < len_s)
+        {
+            temp_p1[id] = new_p1[id] - p1[id];
+        }
+        sum(len_s, temp_p1);
+        if (temp_p1[0] >= acct)
+        {
+            if (id == 0)
+            {
+                t0 = new_t0;
+            }
+            if (id < len_s)
+            {
+                p1[id] = new_p1[id];
+            }
+        }
+        if (id == 0)
+        {
+            t0_history[i] = t0;
+        }
     }
 }
 
