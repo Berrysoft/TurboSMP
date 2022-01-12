@@ -159,23 +159,42 @@ __device__ __host__ std::size_t bisect(const std::size_t n, const float* arr, co
     return i;
 }
 
+__device__ __host__ float interp_id(const float t, const std::size_t nf, const float* f)
+{
+    std::size_t i = bisect(nf, f, t);
+    if (i == 0)
+    {
+        assert(t == f[0]);
+        return 0;
+    }
+    else
+    {
+        assert(i < nf);
+        return i - 1 + (t - f[i - 1]) / (f[i] - f[i - 1]);
+    }
+}
+
 __device__ void interp_id(const std::size_t nx, const std::size_t nf, float* __restrict__ x, const float* __restrict__ f)
 {
     const std::uint32_t id = threadIdx.x;
     if (id < nx)
     {
-        float t = x[id];
-        std::size_t i = bisect(nf, f, t);
-        if (i == 0)
-        {
-            assert(t == f[0]);
-            x[id] = 0;
-        }
-        else
-        {
-            assert(i < nf);
-            x[id] = i - 1 + (t - f[i - 1]) / (f[i] - f[i - 1]);
-        }
+        x[id] = interp_id(x[id], nf, f);
+    }
+}
+
+__device__ __host__ float interp_by(const float t, const std::size_t nf, const float* by)
+{
+    std::size_t i = (std::size_t)std::ceil(t);
+    if (i == 0)
+    {
+        assert(t == 0);
+        return by[0];
+    }
+    else
+    {
+        assert(i < nf);
+        return by[i - 1] + (by[i] - by[i - 1]) * (t - (i - 1));
     }
 }
 
@@ -184,18 +203,7 @@ __device__ void interp_by(const std::size_t nx, const std::size_t nf, float* __r
     const std::uint32_t id = threadIdx.x;
     if (id < nx)
     {
-        float t = x[id];
-        std::size_t i = (std::size_t)std::ceil(t);
-        if (i == 0)
-        {
-            assert(t == 0);
-            x[id] = by[0];
-        }
-        else
-        {
-            assert(i < nf);
-            x[id] = by[i - 1] + (by[i] - by[i - 1]) * (t - (i - 1));
-        }
+        x[id] = interp_by(x[id], nf, by);
     }
 }
 
@@ -210,17 +218,15 @@ __device__ void real_time(
     interp_id(n, nl, pt, tlist);
 }
 
-// Could be called when id == 0
 __device__ float real_time(float t, const std::size_t nl, const float* tlist)
 {
-    real_time(1, nl, &t, tlist);
-    return t;
+    return real_time(t, nl, tlist);
 }
 
 // log of the light curve, t is t0-subtracted.
 // the shape is exGaussian, with paramaters tau=20ns
 // sigma=5ns.
-__device__ __host__ float lc(float t)
+__device__ __host__ float lc(const float t)
 {
     constexpr float tau = 20.;
     constexpr float alpha = 1. / tau;
