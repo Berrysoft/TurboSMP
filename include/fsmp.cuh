@@ -136,20 +136,27 @@ __device__ void combine(
 
 __device__ __host__ std::size_t bisect(const std::size_t n, const float* arr, const float x)
 {
-    if (n == 0) return 0;
-    std::size_t i = n / 2;
-    if (arr[i] == x)
+    std::size_t off = 0;
+    std::size_t num = n;
+    std::size_t i;
+    do
     {
-        return i;
-    }
-    else if (arr[i] < x)
-    {
-        return i + 1 + bisect(n - i - 1, &arr[i + 1], x);
-    }
-    else
-    {
-        return bisect(i, arr, x);
-    }
+        i = off + num / 2;
+        if (arr[i] == x)
+        {
+            return i;
+        }
+        else if (arr[i] < x)
+        {
+            off = i + 1;
+            num = n - off;
+        }
+        else
+        {
+            num = i - off;
+        }
+    } while (num);
+    return i;
 }
 
 __device__ void interp_id(const std::size_t nx, const std::size_t nf, float* __restrict__ x, const float* __restrict__ f)
@@ -178,7 +185,7 @@ __device__ void interp_by(const std::size_t nx, const std::size_t nf, float* __r
     if (id < nx)
     {
         float t = x[id];
-        std::size_t i = (std::size_t)ceil(t);
+        std::size_t i = (std::size_t)std::ceil(t);
         if (i == 0)
         {
             assert(t == 0);

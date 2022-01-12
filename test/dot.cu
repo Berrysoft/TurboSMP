@@ -15,12 +15,18 @@ std::default_random_engine rnd_engine{ rnd_device() };
 
 BOOST_AUTO_TEST_CASE(bisect_test)
 {
-    float arr[] = { 1, 2, 3, 4, 5, 6 };
+    float arr[] = { 1, 2, 3, 4, 5, 6, 7 };
     BOOST_REQUIRE_EQUAL(0, bisect(6, arr, 1));
     BOOST_REQUIRE_EQUAL(1, bisect(6, arr, 1.5));
     BOOST_REQUIRE_EQUAL(1, bisect(6, arr, 2));
     BOOST_REQUIRE_EQUAL(5, bisect(6, arr, 5.5));
     BOOST_REQUIRE_EQUAL(5, bisect(6, arr, 6));
+
+    BOOST_REQUIRE_EQUAL(0, bisect(7, arr, 1));
+    BOOST_REQUIRE_EQUAL(1, bisect(7, arr, 1.5));
+    BOOST_REQUIRE_EQUAL(1, bisect(7, arr, 2));
+    BOOST_REQUIRE_EQUAL(5, bisect(7, arr, 5.5));
+    BOOST_REQUIRE_EQUAL(6, bisect(7, arr, 7));
 }
 
 __global__ void sum_wrapper(const std::size_t n, float* x)
