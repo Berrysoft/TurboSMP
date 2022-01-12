@@ -220,19 +220,24 @@ __device__ float real_time(float t, const std::size_t nl, const float* tlist)
 // log of the light curve, t is t0-subtracted.
 // the shape is exGaussian, with paramaters tau=20ns
 // sigma=5ns.
+__device__ __host__ float lc(float t)
+{
+    constexpr float tau = 20.;
+    constexpr float alpha = 1. / tau;
+    constexpr float sigma = 5.;
+
+    float co = -std::log(2.0 * tau) + alpha * alpha * sigma * sigma / 2.0;
+
+    float x_erf = (alpha * sigma * sigma - t) / (std::sqrt(2.0) * sigma);
+    return co + std::log(1.0 - std::erf(x_erf)) - alpha * t;
+}
+
 __device__ void lc(const std::size_t n, float* t)
 {
     const std::uint32_t id = threadIdx.x;
     if (id < n)
     {
-        constexpr float tau = 20.;
-        constexpr float alpha = 1. / tau;
-        constexpr float sigma = 5.;
-
-        float co = -std::log(2.0 * tau) + alpha * alpha * sigma * sigma / 2.0;
-
-        float x_erf = (alpha * sigma * sigma - t[id]) / (std::sqrt(2.0) * sigma);
-        t[id] = co + std::log(1.0 - std::erf(x_erf)) - alpha * t[id];
+        t[id] = lc(t[id]);
     }
 }
 
