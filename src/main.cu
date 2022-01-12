@@ -40,7 +40,14 @@ __global__ void flow(
     const float mu_t, // LucyDDM 的估算 PE 数
     float* __restrict__ s0_history, // TRIALS, ||s||_0
     float* __restrict__ delta_nu_history, // TRIALS, Δν
-    float* __restrict__ t0_history // TRIALS, t_0
+    float* __restrict__ t0_history, // TRIALS, t_0
+    // Temp buffers
+    float* __restrict__ istar, // TRIALS
+    float* __restrict__ home_s, // TRIALS
+    float* __restrict__ A_vec, // nw
+    float* __restrict__ c_vec, // nw
+    float* __restrict__ delta_cx, // nw x nl
+    float* __restrict__ delta_z // nw
 )
 {
     // 波形编号，一个 block 一个波形
@@ -54,8 +61,6 @@ __global__ void flow(
 
     curandState_t rnd_state;
     curand_init(id, 0, 0, &rnd_state);
-    __shared__ float istar[TRIALS];
-    __shared__ float home_s[TRIALS];
     istar[id] = curand_uniform(&rnd_state);
     home_s[id] = istar[id];
     if (id + blockDim.x < TRIALS)
@@ -86,15 +91,7 @@ __global__ void flow(
     interp_by(NPE0, nl + 1, s, c_cha);
     __syncthreads();
 
-    __shared__ float A_vec[1024];
-    A_vec[id] = 0;
-    __shared__ float c_vec[1024];
-    c_vec[id] = 0;
     __shared__ float delta_nu;
-    __shared__ float delta_cx[1024];
-    delta_cx[id] = 0;
-    __shared__ float delta_z[1024];
-    delta_z[id] = 0;
     for (std::size_t i = 0; i < NPE0; i++)
     {
         combine(nw, nl, A, cx, s[i], A_vec, c_vec);
