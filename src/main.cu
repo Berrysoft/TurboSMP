@@ -82,24 +82,25 @@ __global__ void flow(
     // 并行用
     const std::uint32_t id = threadIdx.x;
 
-    assert(blockDim.x == 1024);
-    assert(nw * nl < 1024);
-    assert(TRIALS > blockDim.x && TRIALS < blockDim.x * 2);
-
     curandState_t rnd_state;
     curand_init(id, 0, 0, &rnd_state);
-    istar[id] = curand_uniform(&rnd_state);
-    home_s[id] = istar[id];
-    if (id + blockDim.x < TRIALS)
+
+    const std::size_t trials_nslice = div_ceil<std::size_t>(TRIALS, blockDim.x);
+    const std::size_t n2 = nw * nl;
+    const std::size_t n2_nslice = div_ceil<std::size_t>(n2, blockDim.x);
+
+    for (std::size_t i = 0; i < trials_nslice; i++)
     {
-        istar[id + blockDim.x] = curand_uniform(&rnd_state);
-        home_s[id + blockDim.x] = istar[id + blockDim.x];
+        std::size_t index = id + i * blockDim.x;
+        if (index < TRIALS)
+        {
+            istar[index] = curand_uniform(&rnd_state);
+            home_s[index] = istar[index];
+        }
     }
 
     __syncthreads();
-    // TRIALS is a little bigger
-    interp_by(TRIALS / 2, nl + 1, home_s, c_cha);
-    interp_by(TRIALS / 2, nl + 1, &home_s[TRIALS / 2], c_cha);
+    interp_by(TRIALS, nl + 1, home_s, c_cha);
 
     std::size_t NPE0 = (std::size_t)(mu_t + 0.5);
     float log_mu = std::log(mu_t);
@@ -125,9 +126,13 @@ __global__ void flow(
         combine(nw, nl, A, cx, s[i], A_vec, c_vec);
         __syncthreads();
         move(nw, nl, A_vec, c_vec, z, 1, mus, sig2s, A, &delta_nu, delta_cx, delta_z);
-        if (id < nw * nl)
+        for (std::size_t j = 0; j < n2_nslice; j++)
         {
-            cx[id] += delta_cx[id];
+            std::size_t jndex = id + j * blockDim.x;
+            if (jndex < n2)
+            {
+                cx[jndex] += delta_cx[jndex];
+            }
         }
         if (id < nw)
         {
@@ -149,22 +154,17 @@ __global__ void flow(
         }
     }
 
-    flip[id] = choose_step(curand_uniform(&rnd_state));
-    if (id + blockDim.x < TRIALS)
+    for (std::size_t i = 0; i < trials_nslice; i++)
     {
-        flip[id + blockDim.x] = choose_step(curand_uniform(&rnd_state));
-    }
-
-    wanders[id] = curand_normal(&rnd_state);
-    wts[id] = curand_normal(&rnd_state);
-    accepts[id] = std::log(curand_uniform(&rnd_state));
-    accts[id] = std::log(curand_uniform(&rnd_state));
-    if (id + blockDim.x < TRIALS)
-    {
-        wanders[id + blockDim.x] = curand_normal(&rnd_state);
-        wts[id + blockDim.x] = curand_normal(&rnd_state);
-        accepts[id + blockDim.x] = std::log(curand_uniform(&rnd_state));
-        accts[id + blockDim.x] = std::log(curand_uniform(&rnd_state));
+        std::size_t index = id + i * blockDim.x;
+        if (index < TRIALS)
+        {
+            flip[index] = choose_step(curand_uniform(&rnd_state));
+            wanders[index] = curand_normal(&rnd_state);
+            wts[index] = curand_normal(&rnd_state);
+            accepts[index] = std::log(curand_uniform(&rnd_state));
+            accts[index] = std::log(curand_uniform(&rnd_state));
+        }
     }
 
     __shared__ float p1[1024];
@@ -292,9 +292,13 @@ __global__ void flow(
                 if (nloc >= 0.5 && nloc <= nl - 0.5)
                 {
                     move2(nw, nl, A_vec, c_vec, annihilate, mus, A, beta, delta_cx, delta_z);
-                    if (id < nw * nl)
+                    for (std::size_t j = 0; j < n2_nslice; j++)
                     {
-                        temp_cx[id] = cx[id] + delta_cx[id];
+                        std::size_t jndex = id + j * blockDim.x;
+                        if (jndex < n2)
+                        {
+                            temp_cx[jndex] = cx[jndex] + delta_cx[jndex];
+                        }
                     }
                     if (id < nw)
                     {
@@ -322,9 +326,13 @@ __global__ void flow(
                         {
                             s[op] = nloc;
                         }
-                        if (id < nw * nl)
+                        for (std::size_t j = 0; j < n2_nslice; j++)
                         {
-                            delta_cx[id] += temp_cx[id];
+                            std::size_t jndex = id + j * blockDim.x;
+                            if (jndex < n2)
+                            {
+                                delta_cx[jndex] += temp_cx[jndex];
+                            }
                         }
                         if (id < nw)
                         {
@@ -346,9 +354,13 @@ __global__ void flow(
 
         if (delta_nu >= accept)
         {
-            if (id < nw * nl)
+            for (std::size_t j = 0; j < n2_nslice; j++)
             {
-                cx[id] += delta_cx[id];
+                std::size_t jndex = id + j * blockDim.x;
+                if (jndex < n2)
+                {
+                    cx[jndex] += delta_cx[jndex];
+                }
             }
             if (id < nw)
             {
