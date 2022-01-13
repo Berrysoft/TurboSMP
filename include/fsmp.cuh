@@ -293,17 +293,13 @@ __device__ void move1(
     }
 }
 
-__device__ void move2(
+__device__ void sum_minus_n_m_mp(
     const std::size_t nw,
     const std::size_t nl,
-    const float* __restrict__ A_vec,
-    const float* __restrict__ c_vec,
-    const int step,
-    const float mus,
-    const float* __restrict__ A,
     const float beta,
-    float* __restrict__ delta_cx, // nw x nl
-    float* __restrict__ delta_z // nw
+    const float* __restrict__ c_vec, // nw
+    const float* __restrict__ A, // nw x nl
+    float* __restrict__ delta_cx // nw x nl
 )
 {
     const std::uint32_t id = threadIdx.x;
@@ -326,16 +322,31 @@ __device__ void move2(
         temp[id] = delta_cx[id];
     }
     __syncthreads();
+    for (std::uint32_t i = 0; i < nslice; i++)
     {
-        for (std::uint32_t i = 0; i < nslice; i++)
+        std::uint32_t index = id + i * blockDim.x;
+        if (index < n2)
         {
-            std::uint32_t index = id + i * blockDim.x;
-            if (index < n2)
-            {
-                delta_cx[index] = beta * c_vec[index / nl] * temp[index % nl];
-            }
+            delta_cx[index] = -beta * c_vec[index / nl] * temp[index % nl];
         }
     }
+}
+
+__device__ void move2(
+    const std::size_t nw,
+    const std::size_t nl,
+    const float* __restrict__ A_vec,
+    const float* __restrict__ c_vec,
+    const int step,
+    const float mus,
+    const float* __restrict__ A,
+    const float beta,
+    float* __restrict__ delta_cx, // nw x nl
+    float* __restrict__ delta_z // nw
+)
+{
+    const std::uint32_t id = threadIdx.x;
+    sum_minus_n_m_mp(nw, nl, beta, c_vec, A, delta_cx);
     if (id < nw)
     {
         delta_z[id] = -step * A_vec[id] * mus;

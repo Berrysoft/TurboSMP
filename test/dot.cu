@@ -223,3 +223,38 @@ BOOST_AUTO_TEST_CASE(lc_test)
         BOOST_REQUIRE_CLOSE(log_lc[j], (float)drt[j], 1e-3f);
     }
 }
+
+__global__ void sum_minus_n_m_mp_wrapper(
+    const std::size_t nw,
+    const std::size_t nl,
+    const float beta,
+    const float* __restrict__ c_vec,
+    const float* __restrict__ A,
+    float* __restrict__ delta_cx)
+{
+    sum_minus_n_m_mp(nw, nl, beta, c_vec, A, delta_cx);
+}
+
+BOOST_AUTO_TEST_CASE(einsum_test)
+{
+    constexpr size_t nw = 4;
+    constexpr size_t nl = 3;
+    const float beta = 1.0;
+    std::vector<float> c_vec = { 1, 2, 3, 4 };
+    std::vector<float> A = { 1, 2, 3,
+                             2, 2, 3,
+                             3, 2, 3,
+                             4, 2, 3 };
+
+    thrust::device_vector<float> dc_vec = c_vec;
+    thrust::device_vector<float> dA = A;
+    thrust::device_vector<float> delta_cx(nw * nl, 0.0f);
+    sum_minus_n_m_mp_wrapper CUDA_KERNEL(1, 1024)(nw, nl, beta, dc_vec.data().get(), dA.data().get(), delta_cx.data().get());
+
+    std::vector<float> expect = { -30, -20, -30,
+                                  -60, -40, -60,
+                                  -90, -60, -90,
+                                  -120, -80, -120 };
+
+    BOOST_REQUIRE_EQUAL_COLLECTIONS(expect.begin(), expect.end(), delta_cx.begin(), delta_cx.end());
+}
