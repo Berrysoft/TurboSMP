@@ -46,7 +46,7 @@ __device__ __host__ void* memmove_back(void* dest, const void* src, size_t count
     return dest;
 }
 
-__global__ void flow(
+__device__ void flow_one(
     const std::size_t nw,
     const std::size_t nl,
     float* __restrict__ cx, // nw x nl, Cov^-1 * A, 详见 FBMP
@@ -77,9 +77,6 @@ __global__ void flow(
     fsmp_step* __restrict__ flip // TRIALS
 )
 {
-    // 波形编号，一个 block 一个波形
-    const std::uint32_t waveform_id = blockIdx.x;
-    // 并行用
     const std::uint32_t id = threadIdx.x;
 
     curandState_t rnd_state;
@@ -381,6 +378,77 @@ __global__ void flow(
             delta_nu_history[i] = delta_nu;
             flip[i] = step;
         }
+    }
+}
+
+__global__ void flow(
+    const std::size_t NW,
+    const std::size_t mnw, // max nw
+    const std::size_t mnl, // max nl
+    const std::size_t* pnw,
+    const std::size_t* pnl,
+    float* __restrict__ cx, // NW x mnw x mnl
+    const float* __restrict__ tlist, // NW x mnl
+    float* __restrict__ z, // NW x mnw
+    const float mus,
+    const float sig2s,
+    const float* __restrict__ A, // NW x mnw x mnl
+    const float* __restrict__ p_cha, // NW x mnl
+    const float* __restrict__ c_cha, // NW x (mnl + 1)
+    const float* mu_t, // NW
+    float* __restrict__ s0_history, // NW x TRIALS
+    float* __restrict__ delta_nu_history, // NW x TRIALS
+    float* __restrict__ t0_history, // NW x TRIALS
+    // Temp buffers
+    float* __restrict__ istar, // NW x TRIALS
+    float* __restrict__ home_s, // NW x TRIALS
+    float* __restrict__ A_vec, // NW x mnw
+    float* __restrict__ c_vec, // NW x mnw
+    float* __restrict__ delta_cx, // NW x mnw x mnl
+    float* __restrict__ delta_z, // NW x mnw
+    float* __restrict__ temp_cx, // NW x mnw x mnl
+    float* __restrict__ temp_z, // NW x mnw
+    float* __restrict__ wanders, // NW x TRIALS
+    float* __restrict__ wts, // NW x TRIALS
+    float* __restrict__ accepts, // NW x TRIALS
+    float* __restrict__ accts, // NW x TRIALS
+    fsmp_step* __restrict__ flip // NW x TRIALS
+
+)
+{
+    const std::uint32_t wid = blockIdx.x;
+    const std::size_t mn2 = mnw * mnl;
+
+    if (wid < NW)
+    {
+        flow_one(
+            pnw[wid],
+            pnl[wid],
+            cx + wid * mn2,
+            tlist + wid * mnl,
+            z + wid * mnw,
+            mus,
+            sig2s,
+            A + wid * mn2,
+            p_cha + wid * mnl,
+            c_cha + wid * (mnl + 1),
+            mu_t[wid],
+            s0_history + wid * TRIALS,
+            delta_nu_history + wid * TRIALS,
+            t0_history + wid * TRIALS,
+            istar + wid * TRIALS,
+            home_s + wid * TRIALS,
+            A_vec + wid * mnw,
+            c_vec + wid * mnw,
+            delta_cx + wid * mn2,
+            delta_z + wid * mnw,
+            temp_cx + wid * mn2,
+            temp_z + wid * mn2,
+            wanders + wid * TRIALS,
+            wts + wid * TRIALS,
+            accepts + wid * TRIALS,
+            accts + wid * TRIALS,
+            flip + wid * TRIALS);
     }
 }
 
