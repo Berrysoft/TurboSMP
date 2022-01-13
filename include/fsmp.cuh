@@ -21,7 +21,12 @@ __device__ void sum(const std::size_t n, float* x)
     {
         if (id < num)
         {
-            x[id] += x[id + num];
+            std::uint32_t nslice = num / blockDim.x + (num % blockDim.x ? 1 : 0);
+            for (std::uint32_t i = 0; i < nslice; i++)
+            {
+                std::uint32_t offset = i * blockDim.x;
+                x[offset + id] += x[offset + id + num];
+            }
             if (id == 0 && num % 2 == 1)
             {
                 x[num] = 0;
@@ -46,15 +51,22 @@ __device__ void sum(const std::size_t n, float* x)
 __device__ void sum2x(const std::size_t nx, const std::size_t ny, float* x)
 {
     assert(nx % 2 == 0);
+    assert(blockDim.x >= ny);
     const std::uint32_t id = threadIdx.x;
     const std::uint32_t ix = id / ny;
+    const std::uint32_t dimx = blockDim.x / ny + (blockDim.x % ny ? 1 : 0);
     const std::uint32_t iy = id % ny;
     std::size_t num = nx;
     while (num /= 2)
     {
         if (ix < num)
         {
-            x[ix * ny + iy] += x[(ix + num) * ny + iy];
+            std::uint32_t nslice = num / dimx + (num % dimx ? 1 : 0);
+            for (std::uint32_t i = 0; i < nslice; i++)
+            {
+                std::uint32_t offset = i * dimx;
+                x[(offset + ix) * ny + iy] += x[(offset + ix + num) * ny + iy];
+            }
             if (ix == 0 && num % 2 == 1)
             {
                 x[num * ny + iy] = 0;

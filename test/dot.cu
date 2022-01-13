@@ -47,7 +47,7 @@ BOOST_AUTO_TEST_CASE(sum_test)
     float expect_sum = std::accumulate(hx.begin(), hx.end(), 0.0f);
 
     thrust::device_vector<float> dx = hx;
-    sum_wrapper CUDA_KERNEL(1, 1024)(N, dx.data().get());
+    sum_wrapper CUDA_KERNEL(1, 9)(N, dx.data().get());
 
     float rsum = dx[0];
     BOOST_REQUIRE_CLOSE(expect_sum, rsum, 1e-3f);
@@ -60,8 +60,8 @@ __global__ void sum2x_wrapper(const std::size_t nx, const std::size_t ny, float*
 
 BOOST_AUTO_TEST_CASE(sum2x_test)
 {
-    constexpr size_t NX = 100;
-    constexpr size_t NY = 9;
+    constexpr size_t NX = 102;
+    constexpr size_t NY = 11;
     thrust::host_vector<float> hx(NX * NY, 0.0f);
     std::uniform_real_distribution<float> rnd{};
     for (size_t i = 0; i < NX * NY; i++)
