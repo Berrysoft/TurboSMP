@@ -306,11 +306,16 @@ __device__ void move2(
     float* __restrict__ delta_z // nw
 )
 {
-    assert(nw * nl < 1024);
     const std::uint32_t id = threadIdx.x;
-    if (id < nw * nl)
+    const std::size_t n2 = nw * nl;
+    const std::uint32_t nslice = div_ceil<std::uint32_t>(n2, blockDim.x);
+    for (std::uint32_t i = 0; i < nslice; i++)
     {
-        delta_cx[id] = A[id] * c_vec[id / nl];
+        std::uint32_t index = id + i * blockDim.x;
+        if (index < n2)
+        {
+            delta_cx[index] = A[index] * c_vec[index / nl];
+        }
     }
     __syncthreads();
     sum2x(nw, nl, delta_cx);
@@ -322,8 +327,6 @@ __device__ void move2(
     }
     __syncthreads();
     {
-        const std::size_t n2 = nw * nl;
-        const std::uint32_t nslice = div_ceil<std::uint32_t>(n2, blockDim.x);
         for (std::uint32_t i = 0; i < nslice; i++)
         {
             std::uint32_t index = id + i * blockDim.x;
