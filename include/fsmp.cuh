@@ -12,6 +12,12 @@
 #include <cstdint>
 #include <cuda_runtime.h>
 
+template <typename T>
+__device__ __host__ constexpr T div_ceil(T a, T b)
+{
+    return a / b + (a % b ? 1 : 0);
+}
+
 __device__ void sum(const std::size_t n, float* x)
 {
     assert(n % 2 == 0);
@@ -19,22 +25,18 @@ __device__ void sum(const std::size_t n, float* x)
     std::size_t num = n;
     while (num /= 2)
     {
-        if (id < num)
+        std::uint32_t nslice = div_ceil<std::uint32_t>(num, blockDim.x);
+        for (std::uint32_t i = 0; i < nslice; i++)
         {
-            std::uint32_t nslice = num / blockDim.x + (num % blockDim.x ? 1 : 0);
-            for (std::uint32_t i = 0; i < nslice; i++)
+            std::uint32_t index = id + i * blockDim.x;
+            if (index < num)
             {
-                std::uint32_t offset = i * blockDim.x;
-                x[offset + id] += x[offset + id + num];
-            }
-            if (id == 0 && num % 2 == 1)
-            {
-                x[num] = 0;
+                x[index] += x[index + num];
             }
         }
-        else
+        if (id == 0 && num % 2 == 1)
         {
-            break;
+            x[num] = 0;
         }
         __syncthreads();
         if (num == 1)
@@ -51,30 +53,26 @@ __device__ void sum(const std::size_t n, float* x)
 __device__ void sum2x(const std::size_t nx, const std::size_t ny, float* x)
 {
     assert(nx % 2 == 0);
-    assert(blockDim.x >= ny);
+    assert(ny <= blockDim.x);
     const std::uint32_t id = threadIdx.x;
     const std::uint32_t ix = id / ny;
-    const std::uint32_t dimx = blockDim.x / ny + (blockDim.x % ny ? 1 : 0);
+    const std::uint32_t dimx = div_ceil<std::uint32_t>(blockDim.x, ny);
     const std::uint32_t iy = id % ny;
     std::size_t num = nx;
     while (num /= 2)
     {
-        if (ix < num)
+        const std::uint32_t nslice = div_ceil<std::uint32_t>(num, dimx);
+        for (std::uint32_t i = 0; i < nslice; i++)
         {
-            std::uint32_t nslice = num / dimx + (num % dimx ? 1 : 0);
-            for (std::uint32_t i = 0; i < nslice; i++)
+            std::uint32_t index = ix + i * dimx;
+            if (index < num)
             {
-                std::uint32_t offset = i * dimx;
-                x[(offset + ix) * ny + iy] += x[(offset + ix + num) * ny + iy];
-            }
-            if (ix == 0 && num % 2 == 1)
-            {
-                x[num * ny + iy] = 0;
+                x[index * ny + iy] += x[(index + num) * ny + iy];
             }
         }
-        else
+        if (ix == 0 && num % 2 == 1)
         {
-            break;
+            x[num * ny + iy] = 0;
         }
         __syncthreads();
         if (num == 1)
@@ -91,10 +89,11 @@ __device__ void sum2x(const std::size_t nx, const std::size_t ny, float* x)
 // Thread 0 can assume the result is calculated successfully.
 __device__ void dot(const std::size_t n, const float* __restrict__ x, const float* __restrict__ y, float* __restrict__ pres)
 {
-    __shared__ float temp[1024];
     assert(n <= 1024);
+    assert(blockDim.x <= 1024);
+
+    __shared__ float temp[1024];
     const std::uint32_t id = threadIdx.x;
-    assert(id < 1024);
     if (id < n)
     {
         temp[id] = x[id] * y[id];
@@ -119,30 +118,18 @@ __device__ void combine(
     float* __restrict__ c_vec // nw
 )
 {
+    assert(nw <= blockDim.x);
+
     float fti;
     float frac = std::modf(t - 0.5, &fti);
     std::uint32_t ti = (std::uint32_t)fti;
 
-    float alpha[2] = { 1 - frac, frac };
-
     const std::uint32_t id = threadIdx.x;
-    assert(id < nw * 4);
 
     if (id < nw)
     {
-        A_vec[id] = 0;
-        c_vec[id] = 0;
-    }
-    // Sync because nw < nw * 4
-    __syncthreads();
-    if (id < nw * 4)
-    {
-        auto id_vec = id / 4;
-        auto id_dot = id % 4;
-        auto id_alpha = id_dot / 2;
-        auto id_interp = id_dot % 2;
-        atomicAdd(&A_vec[id_vec], alpha[id_alpha] * A[id_vec * nl + id_interp + ti]);
-        atomicAdd(&c_vec[id_vec], alpha[id_alpha] * cx[id_vec * nl + id_interp + ti]);
+        A_vec[id] = (1 - frac) * A[id * nl + ti] + frac * A[id * nl + ti + 1];
+        c_vec[id] = (1 - frac) * cx[id * nl + ti] + frac * cx[id * nl + ti + 1];
     }
 }
 
@@ -189,9 +176,14 @@ __device__ __host__ float interp_id(const float t, const std::size_t nf, const f
 __device__ void interp_id(const std::size_t nx, const std::size_t nf, float* __restrict__ x, const float* __restrict__ f)
 {
     const std::uint32_t id = threadIdx.x;
-    if (id < nx)
+    const std::uint32_t nslice = div_ceil<std::uint32_t>(nx, blockDim.x);
+    for (std::uint32_t i = 0; i < nslice; i++)
     {
-        x[id] = interp_id(x[id], nf, f);
+        std::uint32_t index = id + i * blockDim.x;
+        if (index < nx)
+        {
+            x[index] = interp_id(x[index], nf, f);
+        }
     }
 }
 
@@ -213,9 +205,14 @@ __device__ __host__ float interp_by(const float t, const std::size_t nf, const f
 __device__ void interp_by(const std::size_t nx, const std::size_t nf, float* __restrict__ x, const float* __restrict__ by)
 {
     const std::uint32_t id = threadIdx.x;
-    if (id < nx)
+    const std::uint32_t nslice = div_ceil<std::uint32_t>(nx, blockDim.x);
+    for (std::uint32_t i = 0; i < nslice; i++)
     {
-        x[id] = interp_by(x[id], nf, by);
+        std::uint32_t index = id + i * blockDim.x;
+        if (index < nx)
+        {
+            x[index] = interp_by(x[index], nf, by);
+        }
     }
 }
 
@@ -253,9 +250,14 @@ __device__ __host__ float lc(const float t)
 __device__ void lc(const std::size_t n, float* t)
 {
     const std::uint32_t id = threadIdx.x;
-    if (id < n)
+    const std::uint32_t nslice = div_ceil<std::uint32_t>(n, blockDim.x);
+    for (std::uint32_t i = 0; i < nslice; i++)
     {
-        t[id] = lc(t[id]);
+        std::uint32_t index = id + i * blockDim.x;
+        if (index < n)
+        {
+            t[index] = lc(t[index]);
+        }
     }
 }
 
@@ -319,9 +321,17 @@ __device__ void move2(
         temp[id] = delta_cx[id];
     }
     __syncthreads();
-    if (id < nw * nl)
     {
-        delta_cx[id] = beta * c_vec[id / nl] * temp[id % nl];
+        const std::size_t n2 = nw * nl;
+        const std::uint32_t nslice = div_ceil<std::uint32_t>(n2, blockDim.x);
+        for (std::uint32_t i = 0; i < nslice; i++)
+        {
+            std::uint32_t index = id + i * blockDim.x;
+            if (index < n2)
+            {
+                delta_cx[index] = beta * c_vec[index / nl] * temp[index % nl];
+            }
+        }
     }
     if (id < nw)
     {

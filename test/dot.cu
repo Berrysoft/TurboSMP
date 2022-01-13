@@ -145,7 +145,7 @@ BOOST_AUTO_TEST_CASE(real_time_test_fixed)
 
     thrust::device_vector<float> dts = hts;
     thrust::device_vector<float> dtlist = htlist;
-    real_time_wrapper CUDA_KERNEL(1, 1024)(dts.size(), dtlist.size(), dts.data().get(), dtlist.data().get());
+    real_time_wrapper CUDA_KERNEL(1, 5)(dts.size(), dtlist.size(), dts.data().get(), dtlist.data().get());
 
     BOOST_REQUIRE_EQUAL_COLLECTIONS(expect.begin(), expect.end(), dts.begin(), dts.end());
 }
@@ -172,7 +172,7 @@ BOOST_AUTO_TEST_CASE(real_time_test_random)
 
     thrust::device_vector<float> dts = hts;
     thrust::device_vector<float> dtlist = htlist;
-    real_time_wrapper CUDA_KERNEL(1, 1024)(NT, NTLIST, dts.data().get(), dtlist.data().get());
+    real_time_wrapper CUDA_KERNEL(1, 10)(NT, NTLIST, dts.data().get(), dtlist.data().get());
 
     for (size_t i = 0; i < NT; i++)
     {
@@ -201,7 +201,7 @@ BOOST_AUTO_TEST_CASE(interp_by_test)
 
     thrust::device_vector<float> dts = hts;
     thrust::device_vector<float> dtlist = htlist;
-    interp_by_wrapper CUDA_KERNEL(1, 1024)(dts.size(), dtlist.size(), dts.data().get(), dtlist.data().get());
+    interp_by_wrapper CUDA_KERNEL(1, 5)(dts.size(), dtlist.size(), dts.data().get(), dtlist.data().get());
 
     BOOST_REQUIRE_EQUAL_COLLECTIONS(expect.begin(), expect.end(), dts.begin(), dts.end());
 }
@@ -216,7 +216,7 @@ BOOST_AUTO_TEST_CASE(lc_test)
     std::vector<float> real_time{ 0, 1, 2 };
     std::vector<float> log_lc{ -3.87754404, -3.74832397, -3.64498369 };
     thrust::device_vector<float> drt = real_time;
-    lc_wrapper CUDA_KERNEL(1, 1024)(drt.size(), drt.data().get());
+    lc_wrapper CUDA_KERNEL(1, 2)(drt.size(), drt.data().get());
 
     for (size_t j = 0; j < real_time.size(); j++)
     {
