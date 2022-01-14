@@ -122,13 +122,9 @@ __device__ void flow_one(
     {
         s[id] = (id + 0.5) / (float)NPE0;
     }
-    else
-    {
-        s[id] = 0;
-    }
     assert(NPE0 < 1024);
     std::uint32_t len_s = NPE0;
-    interp_by(NPE0, nl + 1, s, c_cha);
+    interp_by(len_s, nl + 1, s, c_cha);
     __syncthreads();
 
     __shared__ float delta_nu;
@@ -392,7 +388,6 @@ __device__ void flow_one(
         {
             s0_history[i] = len_s;
             delta_nu_history[i] = delta_nu;
-            t0_history[i] = t0;
             flip[i] = step;
         }
     }
@@ -431,7 +426,6 @@ __global__ void flow(
     float* __restrict__ accepts, // NW x TRIALS
     float* __restrict__ accts, // NW x TRIALS
     fsmp_step* __restrict__ flip // NW x TRIALS
-
 )
 {
     const std::uint32_t wid = blockIdx.x;
@@ -530,7 +524,7 @@ int main(int argc, char** argv)
     std::vector<float> c_cha(NW * (mnl + 1), 0.0f);
     for (std::size_t i = 0; i < NW; i++)
     {
-        std::partial_sum(p_cha.begin() + i * mnl, p_cha.end() + (i + 1) * mnl, c_cha.begin() + i * (mnl + 1) + 1);
+        std::partial_sum(p_cha.begin() + i * mnl, p_cha.begin() + (i + 1) * mnl, c_cha.begin() + i * (mnl + 1) + 1);
     }
 
     auto index_data = input.openDataSet("index");
@@ -606,7 +600,8 @@ int main(int argc, char** argv)
     thrust::device_vector<float> accts(NW * TRIALS, 0.0f);
     thrust::device_vector<fsmp_step> flip(NW * TRIALS, none);
 
-    flow CUDA_KERNEL(NW, 1024)(
+    std::cout << "Start kernel: " << NW << ", " << mnw << std::endl;
+    flow CUDA_KERNEL(NW, mnw)(
         NW, mnw, mnl,
         dnw.data().get(), dnl.data().get(),
         dcx.data().get(), dtlist.data().get(), dz.data().get(),
@@ -622,7 +617,13 @@ int main(int argc, char** argv)
         accepts.data().get(), accts.data().get(),
         flip.data().get());
 
-    thrust::host_vector<float> host_s0 = s0_history;
+    cudaError_t err = cudaGetLastError();
+    std::cout << "Last error: " << err << std::endl;
+
+    cudaDeviceSynchronize();
+    std::cout << "End kernel" << std::endl;
+
+    thrust::host_vector<std::uint32_t> host_s0 = s0_history;
     thrust::host_vector<float> host_nu = delta_nu_history;
     thrust::host_vector<float> host_t0 = t0_history;
 

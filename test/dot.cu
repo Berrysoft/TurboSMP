@@ -36,7 +36,7 @@ __global__ void sum_wrapper(const std::size_t n, float* x)
 
 BOOST_AUTO_TEST_CASE(sum_test)
 {
-    constexpr size_t N = 100;
+    constexpr size_t N = 101;
     thrust::host_vector<float> hx(N, 0.0f);
     std::uniform_real_distribution<float> rnd{};
     for (size_t i = 0; i < N; i++)
@@ -60,7 +60,7 @@ __global__ void sum2x_wrapper(const std::size_t nx, const std::size_t ny, float*
 
 BOOST_AUTO_TEST_CASE(sum2x_test)
 {
-    constexpr size_t NX = 102;
+    constexpr size_t NX = 101;
     constexpr size_t NY = 11;
     thrust::host_vector<float> hx(NX * NY, 0.0f);
     std::uniform_real_distribution<float> rnd{};

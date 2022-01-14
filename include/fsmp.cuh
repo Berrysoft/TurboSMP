@@ -20,8 +20,12 @@ __device__ __host__ constexpr T div_ceil(T a, T b)
 
 __device__ void sum(const std::size_t n, float* x)
 {
-    assert(n % 2 == 0);
+    if (n <= 1) return;
     const std::uint32_t id = threadIdx.x;
+    if (n % 2 && id == 0)
+    {
+        x[0] += x[n - 1];
+    }
     std::size_t num = n;
     while (num /= 2)
     {
@@ -52,12 +56,16 @@ __device__ void sum(const std::size_t n, float* x)
 
 __device__ void sum2x(const std::size_t nx, const std::size_t ny, float* x)
 {
-    assert(nx % 2 == 0);
+    if (nx <= 1) return;
     assert(ny <= blockDim.x);
     const std::uint32_t id = threadIdx.x;
     const std::uint32_t ix = id / ny;
     const std::uint32_t dimx = div_ceil<std::uint32_t>(blockDim.x, ny);
     const std::uint32_t iy = id % ny;
+    if (nx % 2 && ix == 0)
+    {
+        x[iy] += x[(nx - 1) * ny + iy];
+    }
     std::size_t num = nx;
     while (num /= 2)
     {
@@ -89,8 +97,8 @@ __device__ void sum2x(const std::size_t nx, const std::size_t ny, float* x)
 // Thread 0 can assume the result is calculated successfully.
 __device__ void dot(const std::size_t n, const float* __restrict__ x, const float* __restrict__ y, float* __restrict__ pres)
 {
-    assert(n <= 1024);
     assert(blockDim.x <= 1024);
+    assert(n <= blockDim.x);
 
     __shared__ float temp[1024];
     const std::uint32_t id = threadIdx.x;
@@ -163,7 +171,7 @@ __device__ __host__ float interp_id(const float t, const std::size_t nf, const f
     std::size_t i = bisect(nf, f, t);
     if (i == 0)
     {
-        assert(t == f[0]);
+        // assert(t == f[0]);
         return 0;
     }
     else
@@ -316,7 +324,7 @@ __device__ void sum_minus_n_m_mp(
     __syncthreads();
     sum2x(nw, nl, delta_cx);
     __shared__ float temp[1024];
-    assert(nl < 1024);
+    assert(nl <= blockDim.x);
     if (id < nl)
     {
         temp[id] = delta_cx[id];
