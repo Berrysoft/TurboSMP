@@ -9,7 +9,7 @@ set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_RUNTIME_LIBRARY Shared)
 
-list(APPEND CMAKE_CUDA_FLAGS "--ptxas-options=-v")
+set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --ptxas-options=-v")
 
 find_package(CUDAToolkit REQUIRED)
 find_package(Boost COMPONENTS unit_test_framework program_options REQUIRED)

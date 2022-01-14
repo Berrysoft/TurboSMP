@@ -180,6 +180,7 @@ __device__ void flow_one(
     __shared__ float temp_p1[1024];
     for (std::uint32_t i = 0; i < TRIALS; i++)
     {
+        assert(len_s <= blockDim.x);
         __syncthreads();
 
         float t = istar[i];
@@ -235,11 +236,6 @@ __device__ void flow_one(
             accept -= logf(4);
         }
 
-        if (id < nw)
-        {
-            A_vec[id] = 0;
-            c_vec[id] = 0;
-        }
         __syncthreads();
 
         if (step == generate)
@@ -311,11 +307,6 @@ __device__ void flow_one(
                     if (id < nw)
                     {
                         temp_z[id] = z[id] + delta_z[id];
-                    }
-                    if (id < nw)
-                    {
-                        A_vec[id] = 0;
-                        c_vec[id] = 0;
                     }
                     __syncthreads();
                     combine(nw, nl, A, temp_cx, nloc, A_vec, c_vec);
@@ -456,7 +447,7 @@ __global__ void flow(
             delta_cx + wid * mn2,
             delta_z + wid * mnw,
             temp_cx + wid * mn2,
-            temp_z + wid * mn2,
+            temp_z + wid * mnw,
             wanders + wid * TRIALS,
             wts + wid * TRIALS,
             accepts + wid * TRIALS,
