@@ -203,6 +203,7 @@ __device__ void flow_one(
     for (std::uint32_t i = 0; i < TRIALS; i++)
     {
         assert(len_s <= blockDim.x);
+        printf("Sync 1\n");
         __syncthreads();
 
         float t = istar[i];
@@ -220,7 +221,6 @@ __device__ void flow_one(
             p1[id] = s[id];
         }
         real_time(len_s, nl, p1, tlist);
-        __syncthreads();
         if (id < len_s)
         {
             new_p1[id] = p1[id] - new_t0;
@@ -228,13 +228,12 @@ __device__ void flow_one(
         }
         lc(len_s, p1);
         lc(len_s, new_p1);
-        __syncthreads();
         if (id < len_s)
         {
             temp_p1[id] = new_p1[id] - p1[id];
         }
+        // Maybe stuck here
         sum(len_s, temp_p1);
-        __syncthreads();
         if (temp_p1[0] >= acct)
         {
             if (id == 0)
@@ -261,6 +260,7 @@ __device__ void flow_one(
             accept -= logf(4);
         }
 
+        printf("Sync 2\n");
         __syncthreads();
 
         if (step == generate)
@@ -268,6 +268,7 @@ __device__ void flow_one(
             if (home >= 0.5 && home <= nl - 0.5)
             {
                 combine(nw, nl, A, cx, home, A_vec, c_vec);
+                printf("Sync 3\n");
                 __syncthreads();
                 move1(nw, nl, A_vec, c_vec, z, step, mus, sig2s, &delta_nu, &beta);
                 if (id == 0)
@@ -275,6 +276,7 @@ __device__ void flow_one(
                     printf("delta_nu = %f, log_mu = %f, home = %f, p_cha[home] = %f\n", delta_nu, log_mu, home, p_cha[(std::uint32_t)home]);
                     delta_nu += log_mu + lc(real_time(home, nl, tlist) - t0) - logf(p_cha[(std::uint32_t)home]) - logf(len_s + 1);
                 }
+                printf("Sync 4\n");
                 __syncthreads();
                 if (delta_nu >= accept)
                 {
@@ -296,8 +298,10 @@ __device__ void flow_one(
             std::uint32_t op = (std::uint32_t)(t * len_s);
             float loc = s[op];
             combine(nw, nl, A, cx, loc, A_vec, c_vec);
+            printf("Sync 5\n");
             __syncthreads();
             move1(nw, nl, A_vec, c_vec, z, annihilate, mus, sig2s, &delta_nu, &beta);
+            printf("Sync 6\n");
             __syncthreads();
             if (step == annihilate)
             {
@@ -306,6 +310,7 @@ __device__ void flow_one(
                     printf("delta_nu = %f, log_mu = %f, op = %d, p1[op] = %f, loc = %f, p_cha[loc] = %f\n", delta_nu, log_mu, op, p1[op], loc, p_cha[(std::uint32_t)loc]);
                     delta_nu -= log_mu + p1[op] - logf(p_cha[(std::uint32_t)loc]) - logf(len_s);
                 }
+                printf("Sync 7\n");
                 __syncthreads();
                 if (delta_nu >= accept)
                 {
@@ -339,8 +344,10 @@ __device__ void flow_one(
                             temp_z[jndex] = z[jndex] + delta_z[jndex];
                         }
                     }
+                    printf("Sync 8\n");
                     __syncthreads();
                     combine(nw, nl, A, temp_cx, nloc, A_vec, c_vec);
+                    printf("Sync 9\n");
                     __syncthreads();
                     __shared__ float delta_nu1;
                     move1(nw, nl, A_vec, c_vec, temp_z, generate, mus, sig2s, &delta_nu1, &beta);
@@ -348,6 +355,7 @@ __device__ void flow_one(
                     {
                         delta_nu += delta_nu1 + lc(real_time(nloc, nl, tlist) - t0) - p1[op];
                     }
+                    printf("Sync 10\n");
                     __syncthreads();
                     if (delta_nu >= accept)
                     {
@@ -391,6 +399,7 @@ __device__ void flow_one(
             printf("t %d: %f\n", i, t);
         }
 
+        printf("Sync 11\n");
         __syncthreads();
 
         if (delta_nu >= accept)
