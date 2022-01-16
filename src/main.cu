@@ -388,8 +388,8 @@ __global__ void flow(
     const std::size_t NW,
     const std::size_t mnw, // max nw
     const std::size_t mnl, // max nl
-    const std::uint32_t* pnw,
-    const std::uint32_t* pnl,
+    const std::uint32_t* pnw, // NW
+    const std::uint32_t* pnl, // NW
     float* __restrict__ cx, // NW x mnw x mnl
     const float* __restrict__ tlist, // NW x mnl
     float* __restrict__ z, // NW x mnw
@@ -591,28 +591,36 @@ int main(int argc, char** argv)
     thrust::device_vector<float> accts(NW * TRIALS, 0.0f);
     thrust::device_vector<fsmp_step> flip(NW * TRIALS, none);
 
-    std::cout << "Start kernel: " << NW << ", " << mnw << std::endl;
-    flow CUDA_KERNEL(NW, mnw)(
-        NW, mnw, mnl,
-        dnw.data().get(), dnl.data().get(),
-        dcx.data().get(), dtlist.data().get(), dz.data().get(),
-        dmus.data().get(), dsig2s.data().get(), dsig2w.data().get(),
-        dA.data().get(), dp_cha.data().get(), dc_cha.data().get(),
-        dmu_t.data().get(),
-        s0_history.data().get(), delta_nu_history.data().get(), t0_history.data().get(),
-        istar.data().get(), home_s.data().get(),
-        A_vec.data().get(), c_vec.data().get(),
-        delta_cx.data().get(), delta_z.data().get(),
-        temp_cx.data().get(), temp_z.data().get(),
-        wanders.data().get(), wts.data().get(),
-        accepts.data().get(), accts.data().get(),
-        flip.data().get());
+    constexpr std::size_t BLOCKS = 100;
+    std::size_t nslice = div_ceil(NW, BLOCKS);
+    for (std::size_t i = 1; i < nslice; i++)
+    {
+        std::size_t offset = i * BLOCKS;
+        std::size_t count = std::min(BLOCKS, NW - offset);
+        std::cout << "Starting " << offset << " to " << offset + count - 1 << std::endl;
 
-    cudaError_t err = cudaGetLastError();
-    std::cout << "Last error: " << err << std::endl;
+        flow CUDA_KERNEL(count, 256)(
+            count, mnw, mnl,
+            dnw.data().get() + offset, dnl.data().get() + offset,
+            dcx.data().get() + offset * mnw * mnl, dtlist.data().get() + offset * mnl, dz.data().get() + offset * mnw,
+            dmus.data().get() + offset, dsig2s.data().get() + offset, dsig2w.data().get() + offset,
+            dA.data().get() + offset * mnw * mnl, dp_cha.data().get() + offset * mnl, dc_cha.data().get() + offset * (mnl + 1),
+            dmu_t.data().get() + offset,
+            s0_history.data().get() + offset * TRIALS, delta_nu_history.data().get() + offset * TRIALS, t0_history.data().get() + offset * TRIALS,
+            istar.data().get() + offset * TRIALS, home_s.data().get() + offset * TRIALS,
+            A_vec.data().get() + offset * mnw, c_vec.data().get() + offset * mnw,
+            delta_cx.data().get() + offset * mnw * mnl, delta_z.data().get() + offset * mnw,
+            temp_cx.data().get() + offset * mnw * mnl, temp_z.data().get() + offset * mnw,
+            wanders.data().get() + offset * TRIALS, wts.data().get() + offset * TRIALS,
+            accepts.data().get() + offset * TRIALS, accts.data().get() + offset * TRIALS,
+            flip.data().get() + offset * TRIALS);
 
-    cudaDeviceSynchronize();
-    std::cout << "End kernel" << std::endl;
+        cudaError_t err = cudaGetLastError();
+        assert(err == cudaSuccess);
+
+        err = cudaDeviceSynchronize();
+        assert(err == cudaSuccess);
+    }
 
     thrust::host_vector<std::uint32_t> host_s0 = s0_history;
     thrust::host_vector<float> host_nu = delta_nu_history;
