@@ -90,6 +90,7 @@ __device__ void flow_one(
     const std::uint32_t trials_nslice = div_ceil(TRIALS, blockDim.x);
     const std::uint32_t n2 = nw * nl;
     const std::uint32_t n2_nslice = div_ceil(n2, blockDim.x);
+    const std::uint32_t nw_nslice = div_ceil(nw, blockDim.x);
 
     for (std::uint32_t i = 0; i < trials_nslice; i++)
     {
@@ -98,6 +99,8 @@ __device__ void flow_one(
         {
             istar[index] = curand_uniform(&rnd_state);
             home_s[index] = istar[index];
+            if (index < 10)
+                printf("home_s[%d] == %f, %f, %f\n", index, home_s[index], interp_by(home_s[index], nl + 1, c_cha), c_cha[1]);
         }
     }
 
@@ -113,18 +116,36 @@ __device__ void flow_one(
 
     __syncthreads();
     interp_by(TRIALS, nl + 1, home_s, c_cha);
+    if (id < 10)
+        printf("home_s[%d] == %f\n", id, home_s[id]);
 
     std::uint32_t NPE0 = (std::uint32_t)(mu_t + 0.5);
     float log_mu = std::log(mu_t);
 
     __shared__ float s[1024];
-    if (id < NPE0)
     {
-        s[id] = (id + 0.5) / (float)NPE0;
+        assert(NPE0 < 1024);
+        std::uint32_t NPE0_nslice = div_ceil(NPE0, blockDim.x);
+        for (std::uint32_t i = 0; i < NPE0_nslice; i++)
+        {
+            std::uint32_t index = id + i * blockDim.x;
+            if (index < NPE0)
+            {
+                s[index] = (index + 0.5) / (float)NPE0;
+                printf("s[%d] = %f\n", index, s[index]);
+            }
+        }
     }
-    assert(NPE0 < 1024);
     std::uint32_t len_s = NPE0;
     interp_by(len_s, nl + 1, s, c_cha);
+    __syncthreads();
+    if (id == 0)
+    {
+        for (std::uint32_t i = 0; i < len_s; i++)
+        {
+            printf("s[%d] = %f\n", i, s[i]);
+        }
+    }
     __syncthreads();
 
     __shared__ float delta_nu;
@@ -133,7 +154,7 @@ __device__ void flow_one(
     {
         combine(nw, nl, A, cx, s[i], A_vec, c_vec);
         __syncthreads();
-        move(nw, nl, A_vec, c_vec, z, 1, mus, sig2s, A, &delta_nu, delta_cx, delta_z);
+        move(nw, nl, A_vec, c_vec, z, generate, mus, sig2s, A, &delta_nu, delta_cx, delta_z);
         for (std::uint32_t j = 0; j < n2_nslice; j++)
         {
             std::uint32_t jndex = id + j * blockDim.x;
@@ -142,9 +163,13 @@ __device__ void flow_one(
                 cx[jndex] += delta_cx[jndex];
             }
         }
-        if (id < nw)
+        for (std::uint32_t j = 0; j < nw_nslice; j++)
         {
-            z[id] += delta_z[id];
+            std::uint32_t jndex = id + j * blockDim.x;
+            if (jndex < nw)
+            {
+                z[jndex] += delta_z[jndex];
+            }
         }
         __syncthreads();
     }
@@ -168,6 +193,8 @@ __device__ void flow_one(
         if (index < TRIALS)
         {
             flip[index] = choose_step(curand_uniform(&rnd_state));
+            if (index < 10)
+                printf("flip[%d]=%d\n", index, flip[index]);
             wanders[index] = curand_normal(&rnd_state);
             wts[index] = curand_normal(&rnd_state);
             accepts[index] = std::log(curand_uniform(&rnd_state));
@@ -277,7 +304,9 @@ __device__ void flow_one(
             {
                 if (id == 0)
                 {
+                    printf("delta_nu = %f, log_mu = %f, op = %d, p1[op] = %f, loc = %f, p_cha[loc] = %f\n", delta_nu, log_mu, op, p1[op], loc, p_cha[(std::uint32_t)loc]);
                     delta_nu -= log_mu + p1[op] - logf(p_cha[(std::uint32_t)loc]) - logf(len_s);
+                    printf("delta_nu = %f\n", delta_nu);
                 }
                 __syncthreads();
                 if (delta_nu >= accept)
@@ -304,9 +333,13 @@ __device__ void flow_one(
                             temp_cx[jndex] = cx[jndex] + delta_cx[jndex];
                         }
                     }
-                    if (id < nw)
+                    for (std::uint32_t j = 0; j < nw_nslice; j++)
                     {
-                        temp_z[id] = z[id] + delta_z[id];
+                        std::uint32_t jndex = id + j * blockDim.x;
+                        if (jndex < nw)
+                        {
+                            temp_z[jndex] = z[jndex] + delta_z[jndex];
+                        }
                     }
                     __syncthreads();
                     combine(nw, nl, A, temp_cx, nloc, A_vec, c_vec);
@@ -333,9 +366,13 @@ __device__ void flow_one(
                                 delta_cx[jndex] += temp_cx[jndex];
                             }
                         }
-                        if (id < nw)
+                        for (std::uint32_t j = 0; j < nw_nslice; j++)
                         {
-                            delta_z[id] += temp_z[id];
+                            std::uint32_t jndex = id + j * blockDim.x;
+                            if (jndex < nw)
+                            {
+                                delta_z[jndex] += temp_z[jndex];
+                            }
                         }
                     }
                 }
@@ -347,6 +384,13 @@ __device__ void flow_one(
                     }
                 }
             }
+        }
+
+        if (id == 0)
+        {
+            printf("delta_nu %d step: %f\n", i, delta_nu);
+            printf("home %d: %f\n", i, home);
+            printf("t %d: %f\n", i, t);
         }
 
         __syncthreads();
@@ -361,9 +405,13 @@ __device__ void flow_one(
                     cx[jndex] += delta_cx[jndex];
                 }
             }
-            if (id < nw)
+            for (std::uint32_t j = 0; j < nw_nslice; j++)
             {
-                z[id] += delta_z[id];
+                std::uint32_t jndex = id + j * blockDim.x;
+                if (jndex < nw)
+                {
+                    z[jndex] += delta_z[jndex];
+                }
             }
         }
         else
@@ -380,6 +428,7 @@ __device__ void flow_one(
             s0_history[i] = len_s;
             delta_nu_history[i] = delta_nu;
             flip[i] = step;
+            printf("Here flip[%d]=%d\n\n", i, step);
         }
     }
 }
@@ -558,6 +607,9 @@ int main(int argc, char** argv)
         index_data.read(sig2w.data(), t);
     }
 
+    assert(*std::max_element(nw.begin(), nw.end()) == mnw);
+    assert(*std::max_element(nl.begin(), nl.end()) == mnl);
+
     thrust::device_vector<std::uint32_t> dnw = nw;
     thrust::device_vector<std::uint32_t> dnl = nl;
     thrust::device_vector<float> dcx = A;
@@ -591,13 +643,15 @@ int main(int argc, char** argv)
     thrust::device_vector<float> accts(NW * TRIALS, 0.0f);
     thrust::device_vector<fsmp_step> flip(NW * TRIALS, none);
 
-    constexpr std::size_t BLOCKS = 100;
+    constexpr std::size_t BLOCKS = 1;
     std::size_t nslice = div_ceil(NW, BLOCKS);
-    for (std::size_t i = 1; i < nslice; i++)
+    for (std::size_t i = 0; i < nslice; i++)
     {
         std::size_t offset = i * BLOCKS;
         std::size_t count = std::min(BLOCKS, NW - offset);
         std::cout << "Starting " << offset << " to " << offset + count - 1 << std::endl;
+        std::cout << "c_cha[0] == " << dc_cha[offset * (mnl + 1) + 1] << std::endl;
+        std::cout << "c_cha[-1] == " << dc_cha[(offset + 1) * (mnl + 1) - 1] << std::endl;
 
         flow CUDA_KERNEL(count, 256)(
             count, mnw, mnl,
@@ -620,6 +674,8 @@ int main(int argc, char** argv)
 
         err = cudaDeviceSynchronize();
         assert(err == cudaSuccess);
+
+        break;
     }
 
     thrust::host_vector<std::uint32_t> host_s0 = s0_history;

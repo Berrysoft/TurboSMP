@@ -10,6 +10,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <cuda_runtime.h>
 
 template <typename T>
@@ -196,8 +197,9 @@ __device__ void interp_id(const std::size_t nx, const std::size_t nf, float* __r
     }
 }
 
-__device__ __host__ float interp_by(const float t, const std::size_t nf, const float* by)
+__device__ __host__ float interp_by(float t, const std::size_t nf, const float* by)
 {
+    t *= (nf - 1);
     std::size_t i = (std::size_t)std::ceil(t);
     if (i == 0)
     {
@@ -284,17 +286,19 @@ __device__ void move1(
 )
 {
     const std::uint32_t id = threadIdx.x;
-    float beta_under;
+    __shared__ float beta_under;
     dot(nw, A_vec, c_vec, &beta_under);
     // Sync because the shared memory may be overwritten
     __syncthreads();
-    float temp;
+    __shared__ float temp;
     dot(nw, z, c_vec, &temp);
     if (id == 0)
     {
+        printf("A_vec dot c_vec = %f\n", beta_under);
         float fsig2s = step * sig2s;
         beta_under = 1 + fsig2s * beta_under;
         float beta = fsig2s / beta_under;
+        printf("beta_under = %f, temp = %f, beta = %f\n", beta_under, temp, beta);
         float delta_nu = 0.5 * (beta * powf(temp + mus / sig2s, 2.0f) - powf(mus, 2.0f) / sig2s);
         delta_nu -= 0.5 * logf(beta_under);
         *pdelta_nu = delta_nu;
@@ -360,9 +364,14 @@ __device__ void move2(
 {
     const std::uint32_t id = threadIdx.x;
     sum_minus_n_m_mp(nw, nl, beta, c_vec, A, delta_cx);
-    if (id < nw)
+    const std::uint32_t nslice = div_ceil<std::uint32_t>(nw, blockDim.x);
+    for (std::uint32_t i = 0; i < nslice; i++)
     {
-        delta_z[id] = -step * A_vec[id] * mus;
+        std::uint32_t index = id + i * blockDim.x;
+        if (index < nw)
+        {
+            delta_z[index] = -step * A_vec[index] * mus;
+        }
     }
 }
 

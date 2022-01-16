@@ -195,9 +195,9 @@ __global__ void interp_by_wrapper(const std::size_t nx, const std::size_t nf, fl
 
 BOOST_AUTO_TEST_CASE(interp_by_test)
 {
-    std::vector<float> hts{ 0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4 };
-    std::vector<float> htlist{ 100, 102, 104, 106, 108 };
-    std::vector<float> expect{ 100, 101, 102, 103, 104, 105, 106, 107, 108 };
+    std::vector<float> hts{ 0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0 };
+    std::vector<float> htlist{ 100, 102, 104, 106, 108, 110 };
+    std::vector<float> expect{ 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110 };
 
     thrust::device_vector<float> dts = hts;
     thrust::device_vector<float> dtlist = htlist;
