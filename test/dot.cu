@@ -139,9 +139,9 @@ __global__ void real_time_wrapper(const std::size_t n, const std::size_t nl, flo
 
 BOOST_AUTO_TEST_CASE(real_time_test_fixed)
 {
-    std::vector<float> hts{ 100, 101, 102, 103, 104, 105, 106, 107, 108 };
+    std::vector<float> hts{ 0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4 };
     std::vector<float> htlist{ 100, 102, 104, 106, 108 };
-    std::vector<float> expect{ 0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4 };
+    std::vector<float> expect{ 100., 100., 101., 102., 103., 104., 105., 106., 107. };
 
     thrust::device_vector<float> dts = hts;
     thrust::device_vector<float> dtlist = htlist;
@@ -150,58 +150,20 @@ BOOST_AUTO_TEST_CASE(real_time_test_fixed)
     BOOST_REQUIRE_EQUAL_COLLECTIONS(expect.begin(), expect.end(), dts.begin(), dts.end());
 }
 
-BOOST_AUTO_TEST_CASE(real_time_test_random)
+__global__ void interp_id_wrapper(const std::size_t nx, const std::size_t nf, float* __restrict__ x, const float* __restrict__ by)
 {
-    constexpr size_t NT = 100;
-    constexpr size_t NTLIST = 10;
-    thrust::host_vector<float> hts(NT, 0.0);
-    thrust::host_vector<float> htlist(NTLIST, 0.0);
-    std::uniform_real_distribution<float> rnd{ 100, 200 };
-    for (size_t i = 0; i < NT; i++)
-    {
-        hts[i] = rnd(rnd_engine);
-    }
-    for (size_t i = 1; i < NTLIST - 1; i++)
-    {
-        htlist[i] = rnd(rnd_engine);
-    }
-    htlist[0] = 100;
-    htlist[NTLIST - 1] = 200;
-    std::sort(hts.begin(), hts.end());
-    std::sort(htlist.begin(), htlist.end());
-
-    thrust::device_vector<float> dts = hts;
-    thrust::device_vector<float> dtlist = htlist;
-    real_time_wrapper CUDA_KERNEL(1, 10)(NT, NTLIST, dts.data().get(), dtlist.data().get());
-
-    for (size_t i = 0; i < NT; i++)
-    {
-        float t = hts[i];
-        size_t j = 0;
-        for (; j < NTLIST; j++)
-        {
-            if (htlist[j] > t) break;
-        }
-        hts[i] = j - 1 + (t - htlist[j - 1]) / (htlist[j] - htlist[j - 1]);
-    }
-
-    BOOST_REQUIRE_EQUAL_COLLECTIONS(hts.begin(), hts.end(), dts.begin(), dts.end());
-}
-
-__global__ void interp_by_wrapper(const std::size_t nx, const std::size_t nf, float* __restrict__ x, const float* __restrict__ by)
-{
-    interp_by(nx, nf, x, by);
+    interp_id(nx, nf, x, by);
 }
 
 BOOST_AUTO_TEST_CASE(interp_by_test)
 {
-    std::vector<float> hts{ 0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0 };
-    std::vector<float> htlist{ 100, 102, 104, 106, 108, 110 };
-    std::vector<float> expect{ 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110 };
+    std::vector<float> hts{ 0, 0.2, 0.4, 0.6, 0.8, 1.0 };
+    std::vector<float> cha{ 0, 0.2, 0.4, 0.6, 0.8, 1.0 };
+    std::vector<float> expect{ 0., 1., 2., 3., 4., 5. };
 
     thrust::device_vector<float> dts = hts;
-    thrust::device_vector<float> dtlist = htlist;
-    interp_by_wrapper CUDA_KERNEL(1, 5)(dts.size(), dtlist.size(), dts.data().get(), dtlist.data().get());
+    thrust::device_vector<float> dcha = cha;
+    interp_id_wrapper CUDA_KERNEL(1, 5)(dts.size(), dcha.size(), dts.data().get(), dcha.data().get());
 
     BOOST_REQUIRE_EQUAL_COLLECTIONS(expect.begin(), expect.end(), dts.begin(), dts.end());
 }

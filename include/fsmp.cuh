@@ -199,11 +199,11 @@ __device__ void interp_id(const std::size_t nx, const std::size_t nf, float* __r
 
 __device__ __host__ float interp_by(float t, const std::size_t nf, const float* by)
 {
-    t *= (nf - 1);
+    t -= 0.5;
     std::size_t i = (std::size_t)std::ceil(t);
     if (i == 0)
     {
-        assert(t == 0);
+        // assert(t == 0);
         return by[0];
     }
     else
@@ -235,12 +235,12 @@ __device__ void real_time(
     const float* __restrict__ tlist // nl
 )
 {
-    interp_id(n, nl, pt, tlist);
+    interp_by(n, nl, pt, tlist);
 }
 
 __device__ float real_time(float t, const std::size_t nl, const float* tlist)
 {
-    return real_time(t, nl, tlist);
+    return interp_by(t, nl, tlist);
 }
 
 // log of the light curve, t is t0-subtracted.

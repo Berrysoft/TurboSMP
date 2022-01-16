@@ -100,7 +100,7 @@ __device__ void flow_one(
             istar[index] = curand_uniform(&rnd_state);
             home_s[index] = istar[index];
             if (index < 10)
-                printf("home_s[%d] == %f, %f, %f\n", index, home_s[index], interp_by(home_s[index], nl + 1, c_cha), c_cha[1]);
+                printf("home_s[%d] == %f, %f, %f\n", index, home_s[index], interp_id(home_s[index], nl + 1, c_cha), c_cha[1]);
         }
     }
 
@@ -115,7 +115,7 @@ __device__ void flow_one(
     }
 
     __syncthreads();
-    interp_by(TRIALS, nl + 1, home_s, c_cha);
+    interp_id(TRIALS, nl + 1, home_s, c_cha);
     if (id < 10)
         printf("home_s[%d] == %f\n", id, home_s[id]);
 
@@ -137,15 +137,10 @@ __device__ void flow_one(
         }
     }
     std::uint32_t len_s = NPE0;
-    interp_by(len_s, nl + 1, s, c_cha);
+    interp_id(len_s, nl + 1, s, c_cha);
     __syncthreads();
-    if (id == 0)
-    {
-        for (std::uint32_t i = 0; i < len_s; i++)
-        {
-            printf("s[%d] = %f\n", i, s[i]);
-        }
-    }
+    if (id < len_s)
+        printf("s[%d] = %f\n", id, s[id]);
     __syncthreads();
 
     __shared__ float delta_nu;
@@ -225,6 +220,7 @@ __device__ void flow_one(
             p1[id] = s[id];
         }
         real_time(len_s, nl, p1, tlist);
+        __syncthreads();
         if (id < len_s)
         {
             new_p1[id] = p1[id] - new_t0;
@@ -232,11 +228,13 @@ __device__ void flow_one(
         }
         lc(len_s, p1);
         lc(len_s, new_p1);
+        __syncthreads();
         if (id < len_s)
         {
             temp_p1[id] = new_p1[id] - p1[id];
         }
         sum(len_s, temp_p1);
+        __syncthreads();
         if (temp_p1[0] >= acct)
         {
             if (id == 0)
@@ -274,6 +272,7 @@ __device__ void flow_one(
                 move1(nw, nl, A_vec, c_vec, z, step, mus, sig2s, &delta_nu, &beta);
                 if (id == 0)
                 {
+                    printf("delta_nu = %f, log_mu = %f, home = %f, p_cha[home] = %f\n", delta_nu, log_mu, home, p_cha[(std::uint32_t)home]);
                     delta_nu += log_mu + lc(real_time(home, nl, tlist) - t0) - logf(p_cha[(std::uint32_t)home]) - logf(len_s + 1);
                 }
                 __syncthreads();
@@ -306,7 +305,6 @@ __device__ void flow_one(
                 {
                     printf("delta_nu = %f, log_mu = %f, op = %d, p1[op] = %f, loc = %f, p_cha[loc] = %f\n", delta_nu, log_mu, op, p1[op], loc, p_cha[(std::uint32_t)loc]);
                     delta_nu -= log_mu + p1[op] - logf(p_cha[(std::uint32_t)loc]) - logf(len_s);
-                    printf("delta_nu = %f\n", delta_nu);
                 }
                 __syncthreads();
                 if (delta_nu >= accept)
